@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+    --font-sans: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
+
+    --color-page: var(--daytill-page);
+    --color-surface: var(--daytill-surface);
+    --color-surface-2: var(--daytill-surface-2);
+    --color-canvas-soft-2: var(--daytill-surface-2);
+    --color-ink: var(--daytill-ink);
+    --color-ink-deep: var(--daytill-ink-deep);
+    --color-on-primary: var(--daytill-on-primary);
+    --color-body: var(--daytill-body);
+    --color-mute: var(--daytill-mute);
+    --color-hairline: var(--daytill-hairline);
+    --color-hairline-strong: var(--daytill-hairline-strong);
+    --color-link: var(--daytill-link);
+    --color-primary: var(--daytill-primary);
+    --color-primary-foreground: var(--daytill-primary-foreground);
+    --color-primary-hover: var(--daytill-primary-hover);
+    --color-warning: var(--daytill-warning);
+    --color-warning-soft: var(--daytill-warning-soft);
+    --color-warning-deep: var(--daytill-warning-deep);
+    --color-error: var(--daytill-error);
+    --color-error-soft: var(--daytill-error-soft);
+    --color-error-deep: var(--daytill-error-deep);
+    --color-canvas-soft: var(--daytill-page);
+
+    --radius-pill: 9999px;
+    --radius-card: 28px;
+    --radius-3xl: 24px;
+    --radius-4xl: 32px;
+    --container-350: 87.5rem;
+    --shadow-card:
+        0 1px 1px rgb(0 0 0 / 0.04), 0 12px 32px rgb(0 0 0 / 0.04),
+        inset 0 0 0 1px rgb(0 0 0 / 0.04);
+    --spacing-72: 18rem;
+    --spacing-112: 28rem;
+    --spacing-xl: 36rem;
+}
+
+:root {
+    --daytill-page: #fafafa;
+    --daytill-surface: #ffffff;
+    --daytill-surface-2: #f5f5f5;
+    --daytill-ink: #171717;
+    --daytill-ink-deep: #0f0f0f;
+    --daytill-on-primary: #ffffff;
+    --daytill-body: #333333;
+    --daytill-mute: #5f5f5f;
+    --daytill-hairline: #ebebeb;
+    --daytill-hairline-strong: #a1a1a1;
+    --daytill-link: #005ec9;
+    --daytill-primary: #171717;
+    --daytill-primary-foreground: #ffffff;
+    --daytill-primary-hover: #0b0b0b;
+    --daytill-warning: #f5a623;
+    --daytill-warning-soft: #ffefcf;
+    --daytill-warning-deep: #8a4a08;
+    --daytill-error: #ee0000;
+    --daytill-error-soft: #f7d4d6;
+    --daytill-error-deep: #a30000;
+}
+
+.dark {
+    --daytill-page: #0b0b0c;
+    --daytill-surface: #111113;
+    --daytill-surface-2: #18181b;
+    --daytill-ink: #f5f5f5;
+    --daytill-ink-deep: #ffffff;
+    --daytill-body: #d6d6d6;
+    --daytill-mute: #bbbbbb;
+    --daytill-hairline: #2a2a2d;
+    --daytill-hairline-strong: #49494d;
+    --daytill-link: #8ab8ff;
+    --daytill-primary: #f5f5f5;
+    --daytill-primary-foreground: #111113;
+    --daytill-primary-hover: #ffffff;
+    --daytill-warning: #ffbf4d;
+    --daytill-warning-soft: #2e2514;
+    --daytill-warning-deep: #ffd18a;
+    --daytill-error: #ff6b6b;
+    --daytill-error-soft: #351a1a;
+    --daytill-error-deep: #ffb0b0;
+}
+
+html {
+    background: var(--daytill-page);
+}
+
+body {
+    background:
+        radial-gradient(circle at top, rgb(0 112 243 / 0.08), transparent 32%),
+        linear-gradient(180deg, var(--daytill-page), var(--daytill-page));
+    color: var(--daytill-ink);
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+::selection {
+    background: var(--daytill-ink);
+    color: var(--daytill-surface);
+}
+
+@layer base {
+    *,
+    *::before,
+    *::after {
+        box-sizing: border-box;
+    }
+
+    a {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+        font: inherit;
+    }
+}
+
+@layer utilities {
+    .mesh-gradient {
+        background:
+            radial-gradient(
+                circle at 20% 20%,
+                rgb(0 124 240 / 0.95),
+                transparent 30%
+            ),
+            radial-gradient(
+                circle at 80% 30%,
+                rgb(0 223 216 / 0.9),
+                transparent 26%
+            ),
+            radial-gradient(
+                circle at 55% 65%,
+                rgb(255 0 128 / 0.9),
+                transparent 28%
+            ),
+            radial-gradient(
+                circle at 80% 80%,
+                rgb(249 203 40 / 0.85),
+                transparent 24%
+            ),
+            linear-gradient(135deg, rgb(121 40 202 / 0.8), rgb(23 23 23 / 0.1));
+    }
+
+    .mesh-orb-a {
+        background: radial-gradient(
+            circle,
+            rgb(0 112 243 / 0.55),
+            transparent 68%
+        );
+    }
+
+    .mesh-orb-b {
+        background: radial-gradient(
+            circle,
+            rgb(255 0 128 / 0.5),
+            transparent 70%
+        );
+    }
+
+    .noise-layer {
+        background-image:
+            linear-gradient(rgb(255 255 255 / 0.14) 1px, transparent 1px),
+            linear-gradient(90deg, rgb(255 255 255 / 0.14) 1px, transparent 1px);
+        background-size: 18px 18px;
+        mix-blend-mode: soft-light;
+    }
+
+    .glass-panel {
+        backdrop-filter: blur(18px);
+        background: color-mix(in srgb, var(--daytill-surface) 92%, transparent);
+    }
+}

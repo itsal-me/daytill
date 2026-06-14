@@ -1,24 +1,61 @@
-# build output
-dist/
-
-# generated types
-.astro/
-
 # dependencies
 node_modules/
+.pnp
+.pnp.*
+
+# Next.js
+.next/
+out/
+build/
+dist/
+next-env.d.ts
+
+# production
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# environment variables
+.env
+.env*.local
+!.env.example
 
 # logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# environment variables
-.env
-.env.production
+# testing and coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
 
-# macOS-specific files
+# caches
+.cache/
+.turbo/
+.parcel-cache/
+.eslintcache
+
+# deployment
+.vercel/
+.netlify/
+
+# OS and editor files
 .DS_Store
-
-# jetbrains setting folder
+Thumbs.db
+desktop.ini
 .idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# local certificates
+*.pem
+*.key
+*.crt
+
