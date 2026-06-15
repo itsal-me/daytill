@@ -180,76 +180,76 @@ export function DaytillApp() {
         setCanUseNotifications("Notification" in window);
     }, []);
 
-    // ─── Auth + cloud sync ────────────────────────────────────────────────────
+    // // ─── Auth + cloud sync ────────────────────────────────────────────────────
 
-    useEffect(() => {
-        setAuthConfigured(Boolean(supabase));
-        if (!supabase) {
-            setEvents(loadEvents(STORAGE_KEY));
-            setEventsLoaded(true);
-            return;
-        }
+    // useEffect(() => {
+    //     setAuthConfigured(Boolean(supabase));
+    //     if (!supabase) {
+    //         setEvents(loadEvents(STORAGE_KEY));
+    //         setEventsLoaded(true);
+    //         return;
+    //     }
 
-        let mounted = true;
+    //     let mounted = true;
 
-        async function loadCloudEvents(userId: string) {
-            const { data, error } = await supabase!
-                .from("events")
-                .select("*")
-                .eq("user_id", userId);
+    //     async function loadCloudEvents(userId: string) {
+    //         const { data, error } = await supabase!
+    //             .from("events")
+    //             .select("*")
+    //             .eq("user_id", userId);
 
-            if (!mounted) return;
-            if (error) {
-                toast(
-                    "Could not load cloud events — showing local data.",
-                    "error",
-                );
-                setEvents(loadEvents(STORAGE_KEY));
-                setEventsLoaded(true);
-                return;
-            }
+    //         if (!mounted) return;
+    //         if (error) {
+    //             toast(
+    //                 "Could not load cloud events — showing local data.",
+    //                 "error",
+    //             );
+    //             setEvents(loadEvents(STORAGE_KEY));
+    //             setEventsLoaded(true);
+    //             return;
+    //         }
 
-            const mapped = ((data ?? []) as EventRow[]).map(rowToEvent);
-            setEvents(sortEvents(mapped, Date.now()));
-            setEventsLoaded(true);
-        }
+    //         const mapped = ((data ?? []) as EventRow[]).map(rowToEvent);
+    //         setEvents(sortEvents(mapped, Date.now()));
+    //         setEventsLoaded(true);
+    //     }
 
-        async function init() {
-            const {
-                data: { session },
-            } = await supabase!.auth.getSession();
-            const sessionUser = session?.user ?? null;
-            if (!mounted) return;
-            setUser(sessionUser);
-            if (sessionUser) {
-                await loadCloudEvents(sessionUser.id);
-            } else {
-                setEvents(loadEvents(STORAGE_KEY));
-                setEventsLoaded(true);
-            }
-        }
+    //     async function init() {
+    //         const {
+    //             data: { session },
+    //         } = await supabase!.auth.getSession();
+    //         const sessionUser = session?.user ?? null;
+    //         if (!mounted) return;
+    //         setUser(sessionUser);
+    //         if (sessionUser) {
+    //             await loadCloudEvents(sessionUser.id);
+    //         } else {
+    //             setEvents(loadEvents(STORAGE_KEY));
+    //             setEventsLoaded(true);
+    //         }
+    //     }
 
-        void init();
+    //     void init();
 
-        const {
-            data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
-            const sessionUser = session?.user ?? null;
-            setUser(sessionUser);
-            if (sessionUser) {
-                void loadCloudEvents(sessionUser.id);
-            } else {
-                setEvents(loadEvents(STORAGE_KEY));
-                setEventsLoaded(true);
-            }
-        });
+    //     const {
+    //         data: { subscription },
+    //     } = supabase.auth.onAuthStateChange((_event, session) => {
+    //         const sessionUser = session?.user ?? null;
+    //         setUser(sessionUser);
+    //         if (sessionUser) {
+    //             void loadCloudEvents(sessionUser.id);
+    //         } else {
+    //             setEvents(loadEvents(STORAGE_KEY));
+    //             setEventsLoaded(true);
+    //         }
+    //     });
 
-        return () => {
-            mounted = false;
-            subscription.unsubscribe();
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [supabase]);
+    //     return () => {
+    //         mounted = false;
+    //         subscription.unsubscribe();
+    //     };
+    //     // eslint-disable-next-line react-hooks/exhaustive-deps
+    // }, [supabase]);
 
     // ─── Persist to localStorage (local-only mode) ────────────────────────────
 
@@ -337,29 +337,29 @@ export function DaytillApp() {
         setDraft(DEFAULT_DRAFT);
     }
 
-    async function signInWithGoogle() {
-        if (!supabase) {
-            toast("Supabase not configured.", "error");
-            return;
-        }
-        setAuthBusy(true);
-        const { error } = await supabase.auth.signInWithOAuth({
-            provider: "google",
-            options: { redirectTo: window.location.origin },
-        });
-        if (error) {
-            toast(`Sign-in failed: ${error.message}`, "error");
-            setAuthBusy(false);
-        }
-    }
+    // async function signInWithGoogle() {
+    //     if (!supabase) {
+    //         toast("Supabase not configured.", "error");
+    //         return;
+    //     }
+    //     setAuthBusy(true);
+    //     const { error } = await supabase.auth.signInWithOAuth({
+    //         provider: "google",
+    //         options: { redirectTo: window.location.origin },
+    //     });
+    //     if (error) {
+    //         toast(`Sign-in failed: ${error.message}`, "error");
+    //         setAuthBusy(false);
+    //     }
+    // }
 
-    async function signOutUser() {
-        if (!supabase) return;
-        setAuthBusy(true);
-        const { error } = await supabase.auth.signOut();
-        setAuthBusy(false);
-        if (error) toast(`Sign out failed: ${error.message}`, "error");
-    }
+    // async function signOutUser() {
+    //     if (!supabase) return;
+    //     setAuthBusy(true);
+    //     const { error } = await supabase.auth.signOut();
+    //     setAuthBusy(false);
+    //     if (error) toast(`Sign out failed: ${error.message}`, "error");
+    // }
 
     // function handleThemeToggle() {
     //     const next = theme === "dark" ? "light" : "dark";

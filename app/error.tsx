@@ -15,7 +15,7 @@ export default function ErrorPage({
                 <p className="text-[12px] font-medium uppercase tracking-[0.22em] text-body">
                     500
                 </p>
-                <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-ink">
+                <h1 className="mt-3 text-4xl font-semibold tracking-tighter text-ink">
                     Something went wrong
                 </h1>
                 <p className="mt-4 text-base leading-8 text-body">

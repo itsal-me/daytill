@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+
+import { type User } from "@supabase/supabase-js";
+import {
+    ReactNode,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type KeyboardEvent,
+} from "react";
 
 const navLinks = [
     { href: "/", label: "App" },
@@ -27,10 +37,143 @@ const footerLinks = {
 
 const THEME_KEY = "daytill.theme";
 
+import { DaytillEvent, loadEvents, sortEvents } from "@/lib/daytill";
+
+import {
+    eventToRow,
+    getSupabaseBrowserClient,
+    rowToEvent,
+    type EventRow,
+} from "@/lib/supabase";
+
+type Toast = { id: string; message: string; type: "info" | "error" };
+const STORAGE_KEY = "daytill.events.v1";
+
 export function SiteShell({ children }: { children: ReactNode }) {
+    const supabase = getSupabaseBrowserClient();
+
     const pathname = usePathname();
     const [mobileOpen, setMobileOpen] = useState(false);
     const [theme, setTheme] = useState<"light" | "dark">("light");
+    const [user, setUser] = useState<User | null>(null);
+    const [authConfigured, setAuthConfigured] = useState(false);
+    const [authBusy, setAuthBusy] = useState(false);
+    const [eventsLoaded, setEventsLoaded] = useState(false);
+    const [toasts, setToasts] = useState<Toast[]>([]);
+    const [events, setEvents] = useState<DaytillEvent[]>([]);
+
+    // ─── Toast helpers ────────────────────────────────────────────────────────
+
+    const toast = useCallback(
+        (message: string, type: Toast["type"] = "info") => {
+            const id = crypto.randomUUID();
+            setToasts((prev) => [...prev, { id, message, type }]);
+            setTimeout(
+                () => setToasts((prev) => prev.filter((t) => t.id !== id)),
+                4000,
+            );
+        },
+        [],
+    );
+
+    const dismissToast = useCallback((id: string) => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, []);
+
+    // ─── Auth + cloud sync ────────────────────────────────────────────────────
+
+    useEffect(() => {
+        setAuthConfigured(Boolean(supabase));
+        if (!supabase) {
+            setEvents(loadEvents(STORAGE_KEY));
+            setEventsLoaded(true);
+            return;
+        }
+
+        let mounted = true;
+
+        async function loadCloudEvents(userId: string) {
+            const { data, error } = await supabase!
+                .from("events")
+                .select("*")
+                .eq("user_id", userId);
+
+            if (!mounted) return;
+            if (error) {
+                toast(
+                    "Could not load cloud events — showing local data.",
+                    "error",
+                );
+                setEvents(loadEvents(STORAGE_KEY));
+                setEventsLoaded(true);
+                return;
+            }
+
+            const mapped = ((data ?? []) as EventRow[]).map(rowToEvent);
+            setEvents(sortEvents(mapped, Date.now()));
+            setEventsLoaded(true);
+        }
+
+        async function init() {
+            const {
+                data: { session },
+            } = await supabase!.auth.getSession();
+            const sessionUser = session?.user ?? null;
+            if (!mounted) return;
+            setUser(sessionUser);
+            if (sessionUser) {
+                await loadCloudEvents(sessionUser.id);
+            } else {
+                setEvents(loadEvents(STORAGE_KEY));
+                setEventsLoaded(true);
+            }
+        }
+
+        void init();
+
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event, session) => {
+            const sessionUser = session?.user ?? null;
+            setUser(sessionUser);
+            if (sessionUser) {
+                void loadCloudEvents(sessionUser.id);
+            } else {
+                setEvents(loadEvents(STORAGE_KEY));
+                setEventsLoaded(true);
+            }
+        });
+
+        return () => {
+            mounted = false;
+            subscription.unsubscribe();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [supabase]);
+
+    async function signInWithGoogle() {
+        if (!supabase) {
+            toast("Supabase not configured.", "error");
+            return;
+        }
+        setAuthBusy(true);
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: { redirectTo: window.location.origin },
+        });
+        if (error) {
+            toast(`Sign-in failed: ${error.message}`, "error");
+            setAuthBusy(false);
+        }
+    }
+
+    async function signOutUser() {
+        if (!supabase) return;
+        setAuthBusy(true);
+        const { error } = await supabase.auth.signOut();
+        setAuthBusy(false);
+        if (error) toast(`Sign out failed: ${error.message}`, "error");
+    }
 
     function handleThemeToggle() {
         const next = theme === "dark" ? "light" : "dark";
@@ -86,14 +229,28 @@ export function SiteShell({ children }: { children: ReactNode }) {
                             Log in
                         </Link> */}
 
-                        <button
-                            type="button"
-                            disabled
-                            className="inline-flex h-9 items-center gap-2 rounded-pill border border-hairline bg-surface px-4 text-sm font-semibold text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            <GoogleIcon />
-                            Sign in
-                        </button>
+                        {authConfigured ? (
+                            user ? (
+                                <button
+                                    type="button"
+                                    onClick={signOutUser}
+                                    disabled={authBusy}
+                                    className="inline-flex h-9 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    Sign out
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={signInWithGoogle}
+                                    disabled={authBusy}
+                                    className="inline-flex h-9 items-center gap-2 rounded-pill border border-hairline bg-surface px-4 text-sm font-semibold text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <GoogleIcon />
+                                    Sign in
+                                </button>
+                            )
+                        ) : null}
 
                         <Link
                             href="/#event-form"
@@ -192,7 +349,6 @@ export function SiteShell({ children }: { children: ReactNode }) {
                             <div className="mt-3 flex gap-2 border-t border-hairline/60 pt-3">
                                 <button
                                     type="button"
-                                    disabled
                                     className="inline-flex flex-1 h-9 items-center justify-center gap-2 rounded-pill border border-hairline bg-surface px-4 text-sm font-semibold text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     <GoogleIcon />
