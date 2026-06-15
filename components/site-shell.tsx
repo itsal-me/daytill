@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { getSupabaseBrowserClient, getUserIsPro } from "@/lib/supabase";
 
 const THEME_KEY = "daytill.theme";
 
@@ -38,6 +38,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [theme, setTheme] = useState<"light" | "dark">("light");
     const [user, setUser] = useState<User | null>(null);
+    const [isPro, setIsPro] = useState(false);
     const [authConfigured, setAuthConfigured] = useState(false);
     const [authBusy, setAuthBusy] = useState(false);
     const [toasts, setToasts] = useState<Toast[]>([]);
@@ -84,12 +85,20 @@ export function SiteShell({ children }: { children: ReactNode }) {
         const c = client;
         let mounted = true;
 
+        async function loadPlan(userId: string) {
+            const pro = await getUserIsPro(c, userId);
+            if (mounted) setIsPro(pro);
+        }
+
         async function init() {
             const {
                 data: { session },
             } = await c.auth.getSession();
             if (!mounted) return;
-            setUser(session?.user ?? null);
+            const sessionUser = session?.user ?? null;
+            setUser(sessionUser);
+            if (sessionUser) void loadPlan(sessionUser.id);
+            else setIsPro(false);
         }
 
         void init();
@@ -97,7 +106,10 @@ export function SiteShell({ children }: { children: ReactNode }) {
         const {
             data: { subscription },
         } = c.auth.onAuthStateChange((_event, session) => {
-            setUser(session?.user ?? null);
+            const sessionUser = session?.user ?? null;
+            setUser(sessionUser);
+            if (sessionUser) void loadPlan(sessionUser.id);
+            else setIsPro(false);
         });
 
         return () => {
@@ -274,13 +286,15 @@ export function SiteShell({ children }: { children: ReactNode }) {
                             )
                         ) : null}
 
-                        {/* Start free */}
-                        <Link
-                            href="/#event-form"
-                            className="inline-flex h-7 items-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground transition hover:bg-primary-hover"
-                        >
-                            Start free
-                        </Link>
+                        {/* Start free — hidden for Pro users */}
+                        {!isPro && (
+                            <Link
+                                href="/#event-form"
+                                className="inline-flex h-7 items-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground transition hover:bg-primary-hover"
+                            >
+                                Start free
+                            </Link>
+                        )}
                     </div>
 
                     {/* Mobile right cluster */}
@@ -384,13 +398,15 @@ export function SiteShell({ children }: { children: ReactNode }) {
                                         </button>
                                     )
                                 ) : null}
-                                <Link
-                                    href="/#event-form"
-                                    onClick={() => setMobileOpen(false)}
-                                    className="inline-flex h-9 flex-1 items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground"
-                                >
-                                    Start free
-                                </Link>
+                                {!isPro && (
+                                    <Link
+                                        href="/#event-form"
+                                        onClick={() => setMobileOpen(false)}
+                                        className="inline-flex h-9 flex-1 items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground"
+                                    >
+                                        Start free
+                                    </Link>
+                                )}
                             </div>
                         </nav>
                     </div>

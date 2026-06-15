@@ -12,6 +12,7 @@ import {
     loadEvents,
     type DaytillEvent,
 } from "@/lib/daytill";
+import { getSupabaseBrowserClient, getUserIsPro } from "@/lib/supabase";
 
 const STORAGE_KEY = "daytill.events.v1";
 
@@ -27,6 +28,7 @@ export function SharedEventView({
     );
     const [loading, setLoading] = useState(() => !decodeEventPayload(initialPayload));
     const [now, setNow] = useState(() => Date.now());
+    const [isPro, setIsPro] = useState(false);
 
     // Resolve event: try share API → fall back to localStorage
     useEffect(() => {
@@ -71,6 +73,19 @@ export function SharedEventView({
     useEffect(() => {
         const interval = window.setInterval(() => setNow(Date.now()), 1000);
         return () => window.clearInterval(interval);
+    }, []);
+
+    // Check if the viewer is a Pro user (hides the "Start for free" upsell)
+    useEffect(() => {
+        const supabase = getSupabaseBrowserClient();
+        if (!supabase) return;
+        let cancelled = false;
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
+            if (cancelled || !session?.user) return;
+            const pro = await getUserIsPro(supabase, session.user.id);
+            if (!cancelled) setIsPro(pro);
+        });
+        return () => { cancelled = true; };
     }, []);
 
     const countdown = useMemo(() => {
@@ -187,17 +202,19 @@ export function SharedEventView({
                             : "This page is view-only and updates live."}
                     </p>
 
-                    <div className="mt-8 border-t border-hairline/60 pt-8">
-                        <p className="text-sm text-body">
-                            Track your own countdowns for free.
-                        </p>
-                        <Link
-                            href="/"
-                            className="mt-4 inline-flex h-10 items-center rounded-pill bg-primary px-5 text-sm font-medium text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover"
-                        >
-                            Start for free
-                        </Link>
-                    </div>
+                    {!isPro && (
+                        <div className="mt-8 border-t border-hairline/60 pt-8">
+                            <p className="text-sm text-body">
+                                Track your own countdowns for free.
+                            </p>
+                            <Link
+                                href="/"
+                                className="mt-4 inline-flex h-10 items-center rounded-pill bg-primary px-5 text-sm font-medium text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover"
+                            >
+                                Start for free
+                            </Link>
+                        </div>
+                    )}
                 </article>
             </section>
         </main>

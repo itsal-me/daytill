@@ -193,6 +193,13 @@ export function DaytillApp() {
     }, []);
 
     // ─── Auth + plan + cloud sync ─────────────────────────────────────────────
+    //
+    // Model: plan is checked FIRST, then we decide what to do with events.
+    //
+    // Free + signed-in  → stay on localStorage, never touch Supabase events table.
+    // Pro + signed-in   → check cloud; if empty AND we have local events, migrate
+    //                     them to cloud (one-time), then show merged result.
+    //                     If cloud already has events, show cloud only.
 
     useEffect(() => {
         const client = supabase;
@@ -205,68 +212,99 @@ export function DaytillApp() {
         const c = client;
         let mounted = true;
 
-        async function loadCloudEvents(userId: string) {
+        async function syncForProUser(userId: string) {
             const { data, error } = await c
                 .from("events")
                 .select("*")
                 .eq("user_id", userId);
+
             if (!mounted) return;
+
             if (error) {
-                toast(
-                    "Could not load cloud events — showing local data.",
-                    "error",
-                );
+                toast("Could not load cloud events — showing local data.", "error");
                 setEvents(loadEvents(STORAGE_KEY));
                 setEventsLoaded(true);
                 return;
             }
-            const mapped = ((data ?? []) as EventRow[]).map(rowToEvent);
-            setEvents(sortEvents(mapped, Date.now()));
+
+            const cloudEvents = ((data ?? []) as EventRow[]).map(rowToEvent);
+
+            // Cloud is empty but local has events → migrate local → cloud
+            const localEvents = loadEvents(STORAGE_KEY);
+            if (cloudEvents.length === 0 && localEvents.length > 0) {
+                const rows = localEvents.map((e) => eventToRow(userId, e));
+                const { error: upsertError } = await c.from("events").upsert(rows);
+                if (!mounted) return;
+                if (upsertError) {
+                    toast("Migration to cloud failed — keeping local events.", "error");
+                    setEvents(sortEvents(localEvents, Date.now()));
+                } else {
+                    toast(`Migrated ${localEvents.length} local event${localEvents.length === 1 ? "" : "s"} to your Pro account.`);
+                    setEvents(sortEvents(localEvents, Date.now()));
+                    // Clear local copy now that cloud is authoritative
+                    saveLocalEvents([]);
+                }
+            } else {
+                setEvents(sortEvents(cloudEvents, Date.now()));
+            }
+
             setEventsLoaded(true);
         }
 
-        async function loadPlan(userId: string) {
-            const pro = await getUserIsPro(c, userId);
-            if (mounted) setIsPro(pro);
-        }
-
         async function init() {
-            const {
-                data: { session },
-            } = await c.auth.getSession();
+            const { data: { session } } = await c.auth.getSession();
             if (!mounted) return;
             const sessionUser = session?.user ?? null;
             setUser(sessionUser);
-            if (sessionUser) {
-                await Promise.all([
-                    loadCloudEvents(sessionUser.id),
-                    loadPlan(sessionUser.id),
-                ]);
-            } else {
+
+            if (!sessionUser) {
                 setEvents(loadEvents(STORAGE_KEY));
                 setEventsLoaded(true);
                 setIsPro(false);
+                return;
+            }
+
+            // Check plan before deciding where events come from
+            const pro = await getUserIsPro(c, sessionUser.id);
+            if (!mounted) return;
+            setIsPro(pro);
+
+            if (pro) {
+                await syncForProUser(sessionUser.id);
+            } else {
+                // Signed in but free — use local storage
+                setEvents(loadEvents(STORAGE_KEY));
+                setEventsLoaded(true);
             }
         }
 
         void init();
 
-        const {
-            data: { subscription },
-        } = c.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = c.auth.onAuthStateChange((_event, session) => {
             const sessionUser = session?.user ?? null;
             setUser(sessionUser);
-            if (sessionUser) {
-                void loadCloudEvents(sessionUser.id);
-                void loadPlan(sessionUser.id);
-            } else {
+
+            if (!sessionUser) {
                 setEvents(loadEvents(STORAGE_KEY));
                 setEventsLoaded(true);
                 setIsPro(false);
-                // Reset theme to default on sign-out
                 setAppearance("default");
                 applyTheme("default");
+                return;
             }
+
+            // Re-check plan on every auth event (covers the free→pro upgrade moment)
+            void (async () => {
+                const pro = await getUserIsPro(c, sessionUser.id);
+                if (!mounted) return;
+                setIsPro(pro);
+                if (pro) {
+                    await syncForProUser(sessionUser.id);
+                } else {
+                    setEvents(loadEvents(STORAGE_KEY));
+                    setEventsLoaded(true);
+                }
+            })();
         });
 
         return () => {
