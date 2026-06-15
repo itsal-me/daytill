@@ -1,50 +1,76 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ProseLayout, ProseSection } from "@/components/prose-layout";
 
 export const metadata: Metadata = {
     title: "Terms and Conditions",
     description:
-        "Review the Daytill terms and conditions covering account use, reminders, event sharing, and service limits.",
+        "Daytill terms of service — account use, reminders, event sharing, and service limits.",
 };
 
 export default function TermsPage() {
     return (
-        <main className="mx-auto min-h-screen w-full max-w-4xl px-4 py-12 text-ink sm:px-6 lg:px-8">
-            <article className="rounded-4xl border border-hairline bg-surface p-8 shadow-card sm:p-10">
-                <p className="text-[12px] font-medium uppercase tracking-[0.22em] text-body">
-                    Terms &amp; Conditions
+        <ProseLayout
+            eyebrow="Terms & Conditions"
+            title="Fair use terms for Daytill."
+        >
+            <ProseSection heading="Acceptable use">
+                <p>
+                    By using Daytill you agree to use the service for lawful,
+                    non-abusive purposes. You are responsible for the content
+                    of event titles, descriptions, and shared links you create.
                 </p>
-                <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-ink sm:text-5xl">
-                    Fair use terms for Daytill.
-                </h1>
-                <p className="mt-6 text-base leading-8 text-body">
-                    By using Daytill, you agree to use the service for lawful
-                    and non-abusive purposes. You are responsible for any
-                    content entered into event titles, reminders, and shared
-                    links.
+            </ProseSection>
+
+            <ProseSection heading="Service availability">
+                <p>
+                    Daytill is provided on an as-is basis. We may update
+                    features, improve security, modify interfaces, or change
+                    storage methods to maintain quality and reliability. We aim
+                    for high availability but do not guarantee uninterrupted
+                    access.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    Daytill is provided on an as-is basis without warranties of
-                    uninterrupted availability. We may update features, improve
-                    security, modify interfaces, or change storage methods over
-                    time to maintain service quality and reliability.
+            </ProseSection>
+
+            <ProseSection heading="Reminders are supportive, not authoritative">
+                <p>
+                    Daytill reminders are planning tools. You should verify
+                    critical deadlines independently. Do not rely solely on
+                    Daytill alerts for legal, academic, medical, or financial
+                    obligations.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    You should verify critical deadlines independently. Daytill
-                    reminders are intended as supportive planning tools and
-                    should not be your sole alert system for legal, academic,
-                    medical, or financial obligations.
+            </ProseSection>
+
+            <ProseSection heading="Account security">
+                <p>
+                    If you use Google sign-in, you are responsible for keeping
+                    your account access secure. All activity occurring while
+                    you are signed in is your responsibility.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    Shared countdown pages are view-only. If you use Google
-                    sign-in or Supabase-backed syncing, you are responsible for
-                    keeping your account access secure and for any activity that
-                    occurs while you are signed in.
+            </ProseSection>
+
+            <ProseSection heading="Shared pages">
+                <p>
+                    Shared countdown pages are view-only and contain only the
+                    information embedded in the share link. You control sharing
+                    by creating and deleting events on your dashboard.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    Continued use of Daytill after updates implies acceptance of
-                    revised terms.
+            </ProseSection>
+
+            <ProseSection heading="Changes to these terms">
+                <p>
+                    We may update these terms as the product evolves. Continued
+                    use after changes are published implies acceptance. For
+                    questions, contact{" "}
+                    <Link
+                        href="mailto:support@daytill.app"
+                        className="text-link underline underline-offset-2"
+                    >
+                        support@daytill.app
+                    </Link>
+                    .
                 </p>
-            </article>
-        </main>
+            </ProseSection>
+        </ProseLayout>
     );
 }

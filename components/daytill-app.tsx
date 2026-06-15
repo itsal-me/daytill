@@ -2,11 +2,12 @@
 
 import { type User } from "@supabase/supabase-js";
 import {
+    useCallback,
     useEffect,
     useMemo,
+    useRef,
     useState,
     type KeyboardEvent,
-    type MouseEvent,
 } from "react";
 import {
     CATEGORY_OPTIONS,
@@ -14,11 +15,10 @@ import {
     type EventCategory,
     buildCalendarUrl,
     buildIcsDocument,
-    encodeEventPayload,
     buildShareUrl,
     createTargetDate,
+    encodeEventPayload,
     formatCountdown,
-    formatDateLabel,
     isEventExpired,
     loadEvents,
     sortEvents,
@@ -30,6 +30,10 @@ import {
     rowToEvent,
     type EventRow,
 } from "@/lib/supabase";
+import { EventCard } from "@/components/event-card";
+import { StatCard } from "@/components/stat-card";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type DraftState = {
     title: string;
@@ -42,6 +46,10 @@ type DraftState = {
     reminder1Day: boolean;
     reminderDayOf: boolean;
 };
+
+type Toast = { id: string; message: string; type: "info" | "error" };
+
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "daytill.events.v1";
 const NOTIFIED_KEY = "daytill.notifications.v1";
@@ -59,30 +67,10 @@ const DEFAULT_DRAFT: DraftState = {
     reminderDayOf: true,
 };
 
-const faqItems = [
-    {
-        question: "What can I track with Daytill?",
-        answer: "You can track birthdays, exams, deadlines, trips, anniversaries, and any other future event with a live countdown card.",
-    },
-    {
-        question: "Are reminders available without an account?",
-        answer: "Yes. Daytill supports local reminder preferences immediately, and browser notifications can be enabled per device.",
-    },
-    {
-        question: "Can I share a countdown page publicly?",
-        answer: "Yes. Each event has a unique share link that opens a dedicated, view-only countdown page.",
-    },
-    {
-        question: "Does Daytill support recurring events?",
-        answer: "Yes. You can enable yearly recurrence for events like birthdays and anniversaries.",
-    },
-];
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function loadNotificationLog() {
-    if (typeof window === "undefined") {
-        return new Set<string>();
-    }
-
+    if (typeof window === "undefined") return new Set<string>();
     try {
         return new Set<string>(
             JSON.parse(window.localStorage.getItem(NOTIFIED_KEY) || "[]"),
@@ -97,32 +85,47 @@ function saveNotificationLog(log: Set<string>) {
 }
 
 function draftToReminders(draft: DraftState) {
-    const reminders: number[] = [];
-
-    if (draft.reminder7Days) reminders.push(7);
-    if (draft.reminder1Day) reminders.push(1);
-    if (draft.reminderDayOf) reminders.push(0);
-
-    return reminders;
+    const r: number[] = [];
+    if (draft.reminder7Days) r.push(7);
+    if (draft.reminder1Day) r.push(1);
+    if (draft.reminderDayOf) r.push(0);
+    return r;
 }
 
-function saveEvents(storageKey: string, events: DaytillEvent[]) {
-    if (typeof window === "undefined") {
-        return;
-    }
-
-    window.localStorage.setItem(storageKey, JSON.stringify(events));
+function saveLocalEvents(events: DaytillEvent[]) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
 }
+
+function eventToDraft(event: DaytillEvent): DraftState {
+    return {
+        title: event.title,
+        date: event.date,
+        time: event.time ?? "",
+        category: event.category,
+        recurringYearly: event.recurringYearly,
+        emailReminder: event.emailReminder ?? "",
+        reminder7Days: event.reminders.includes(7),
+        reminder1Day: event.reminders.includes(1),
+        reminderDayOf: event.reminders.includes(0),
+    };
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function DaytillApp() {
     const supabase = getSupabaseBrowserClient();
+
+    // State
     const [events, setEvents] = useState<DaytillEvent[]>([]);
     const [draft, setDraft] = useState<DraftState>(DEFAULT_DRAFT);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [filterCategory, setFilterCategory] = useState<EventCategory | "All">(
+        "All",
+    );
     const [now, setNow] = useState(() => Date.now());
     const [theme, setTheme] = useState<"light" | "dark">("light");
-    const [status, setStatus] = useState(
-        "Create your first event to begin tracking the countdown.",
-    );
+    const [toasts, setToasts] = useState<Toast[]>([]);
     const [notificationLog, setNotificationLog] = useState<Set<string>>(
         () => new Set(),
     );
@@ -134,83 +137,90 @@ export function DaytillApp() {
     const [authBusy, setAuthBusy] = useState(false);
     const [eventsLoaded, setEventsLoaded] = useState(false);
 
+    const formRef = useRef<HTMLDivElement>(null);
+
+    // ─── Toast helpers ────────────────────────────────────────────────────────
+
+    const toast = useCallback(
+        (message: string, type: Toast["type"] = "info") => {
+            const id = crypto.randomUUID();
+            setToasts((prev) => [...prev, { id, message, type }]);
+            setTimeout(
+                () => setToasts((prev) => prev.filter((t) => t.id !== id)),
+                4000,
+            );
+        },
+        [],
+    );
+
+    const dismissToast = useCallback((id: string) => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, []);
+
+    // ─── Boot ─────────────────────────────────────────────────────────────────
+
     useEffect(() => {
         setNotificationLog(loadNotificationLog());
+        if (typeof window === "undefined") return;
 
-        if (typeof window !== "undefined") {
-            const storedTheme = window.localStorage.getItem(THEME_KEY);
-            const resolvedTheme =
-                storedTheme === "dark" || storedTheme === "light"
-                    ? storedTheme
-                    : window.matchMedia("(prefers-color-scheme: dark)").matches
-                      ? "dark"
-                      : "light";
+        const stored = window.localStorage.getItem(THEME_KEY);
+        const resolved =
+            stored === "dark" || stored === "light"
+                ? stored
+                : window.matchMedia("(prefers-color-scheme: dark)").matches
+                  ? "dark"
+                  : "light";
 
-            setTheme(resolvedTheme);
-            document.documentElement.classList.toggle(
-                "dark",
-                resolvedTheme === "dark",
-            );
-            document.documentElement.style.colorScheme = resolvedTheme;
-            setNotificationPermission(
-                "Notification" in window ? Notification.permission : "denied",
-            );
-            setCanUseNotifications("Notification" in window);
-        }
+        setTheme(resolved);
+        document.documentElement.classList.toggle("dark", resolved === "dark");
+        document.documentElement.style.colorScheme = resolved;
+        setNotificationPermission(
+            "Notification" in window ? Notification.permission : "denied",
+        );
+        setCanUseNotifications("Notification" in window);
     }, []);
+
+    // ─── Auth + cloud sync ────────────────────────────────────────────────────
 
     useEffect(() => {
         setAuthConfigured(Boolean(supabase));
-
-        const client = supabase;
-
-        if (!client) {
+        if (!supabase) {
             setEvents(loadEvents(STORAGE_KEY));
             setEventsLoaded(true);
             return;
         }
 
-        const authedClient = client;
-
         let mounted = true;
 
         async function loadCloudEvents(userId: string) {
-            const { data, error } = await authedClient
+            const { data, error } = await supabase!
                 .from("events")
                 .select("*")
                 .eq("user_id", userId);
 
-            if (!mounted) {
-                return;
-            }
-
+            if (!mounted) return;
             if (error) {
-                setStatus("Could not load cloud events, using local data.");
+                toast(
+                    "Could not load cloud events — showing local data.",
+                    "error",
+                );
                 setEvents(loadEvents(STORAGE_KEY));
                 setEventsLoaded(true);
                 return;
             }
 
-            const mappedEvents = ((data ?? []) as EventRow[]).map((row) =>
-                rowToEvent(row),
-            );
-            setEvents(sortEvents(mappedEvents, Date.now()));
+            const mapped = ((data ?? []) as EventRow[]).map(rowToEvent);
+            setEvents(sortEvents(mapped, Date.now()));
             setEventsLoaded(true);
-            setStatus("Synced events from your account.");
         }
 
-        async function initAuth() {
+        async function init() {
             const {
                 data: { session },
-            } = await authedClient.auth.getSession();
+            } = await supabase!.auth.getSession();
             const sessionUser = session?.user ?? null;
-
-            if (!mounted) {
-                return;
-            }
-
+            if (!mounted) return;
             setUser(sessionUser);
-
             if (sessionUser) {
                 await loadCloudEvents(sessionUser.id);
             } else {
@@ -219,20 +229,18 @@ export function DaytillApp() {
             }
         }
 
-        void initAuth();
+        void init();
 
         const {
             data: { subscription },
-        } = authedClient.auth.onAuthStateChange((_event, session) => {
+        } = supabase.auth.onAuthStateChange((_event, session) => {
             const sessionUser = session?.user ?? null;
             setUser(sessionUser);
-
             if (sessionUser) {
                 void loadCloudEvents(sessionUser.id);
             } else {
                 setEvents(loadEvents(STORAGE_KEY));
                 setEventsLoaded(true);
-                setStatus("Signed out. Local browser events are active.");
             }
         });
 
@@ -240,64 +248,54 @@ export function DaytillApp() {
             mounted = false;
             subscription.unsubscribe();
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [supabase]);
 
-    useEffect(() => {
-        if (typeof window === "undefined" || !eventsLoaded || user) {
-            return;
-        }
+    // ─── Persist to localStorage (local-only mode) ────────────────────────────
 
-        saveEvents(STORAGE_KEY, events);
+    useEffect(() => {
+        if (typeof window === "undefined" || !eventsLoaded || user) return;
+        saveLocalEvents(events);
     }, [events, eventsLoaded, user]);
 
-    useEffect(() => {
-        if (typeof window === "undefined") {
-            return;
-        }
+    // ─── Live clock ───────────────────────────────────────────────────────────
 
-        const interval = window.setInterval(() => setNow(Date.now()), 1000);
-        return () => window.clearInterval(interval);
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const id = window.setInterval(() => setNow(Date.now()), 1000);
+        return () => window.clearInterval(id);
     }, []);
 
-    useEffect(() => {
-        if (typeof window === "undefined" || !("Notification" in window)) {
-            return;
-        }
+    // ─── Browser notifications ────────────────────────────────────────────────
 
-        if (Notification.permission !== "granted") {
+    useEffect(() => {
+        if (typeof window === "undefined" || !("Notification" in window))
             return;
-        }
+        if (Notification.permission !== "granted") return;
 
         const nextLog = new Set(notificationLog);
 
         for (const event of events) {
             const targetDate = createTargetDate(event);
-
-            for (const reminderDays of event.reminders) {
+            for (const days of event.reminders) {
                 const reminderAt = new Date(
-                    targetDate.getTime() - reminderDays * 24 * 60 * 60 * 1000,
+                    targetDate.getTime() - days * 86400000,
                 );
-                const key = `${event.id}:${targetDate.toISOString().slice(0, 10)}:${reminderDays}`;
-                const shouldTrigger =
+                const key = `${event.id}:${targetDate.toISOString().slice(0, 10)}:${days}`;
+                if (
                     now >= reminderAt.getTime() &&
                     now < targetDate.getTime() &&
-                    !nextLog.has(key);
-
-                if (!shouldTrigger) {
-                    continue;
+                    !nextLog.has(key)
+                ) {
+                    const label =
+                        days === 0
+                            ? "today"
+                            : `${days} day${days === 1 ? "" : "s"} away`;
+                    new Notification(`Daytill: ${event.title}`, {
+                        body: `Your ${event.category.toLowerCase()} is ${label}.`,
+                    });
+                    nextLog.add(key);
                 }
-
-                const label =
-                    reminderDays === 0
-                        ? "today"
-                        : `${reminderDays} day${reminderDays === 1 ? "" : "s"} before`;
-                window.navigator.serviceWorker?.ready.catch(() => undefined);
-
-                new Notification(`Daytill reminder: ${event.title}`, {
-                    body: `Your ${event.category.toLowerCase()} event is ${label}.`,
-                });
-
-                nextLog.add(key);
             }
         }
 
@@ -307,92 +305,129 @@ export function DaytillApp() {
         }
     }, [events, notificationLog, now]);
 
-    const sortedEvents = useMemo(() => sortEvents(events, now), [events, now]);
-    const nextUpcoming =
-        sortedEvents.find((event) => !isEventExpired(event, now)) ??
-        sortedEvents[0];
-    const eventCount = events.length;
+    // ─── Derived ─────────────────────────────────────────────────────────────
 
-    function updateDraft<K extends keyof DraftState>(
-        key: K,
-        value: DraftState[K],
-    ) {
-        setDraft((current) => ({ ...current, [key]: value }));
+    const sortedEvents = useMemo(() => sortEvents(events, now), [events, now]);
+
+    const filteredEvents = useMemo(
+        () =>
+            filterCategory === "All"
+                ? sortedEvents
+                : sortedEvents.filter((e) => e.category === filterCategory),
+        [sortedEvents, filterCategory],
+    );
+
+    const nextUpcoming =
+        sortedEvents.find((e) => !isEventExpired(e, now)) ?? sortedEvents[0];
+
+    // ─── Handlers ─────────────────────────────────────────────────────────────
+
+    function updateDraft<K extends keyof DraftState>(k: K, v: DraftState[K]) {
+        setDraft((c) => ({ ...c, [k]: v }));
+    }
+
+    function startEdit(event: DaytillEvent) {
+        setEditingId(event.id);
+        setDraft(eventToDraft(event));
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function cancelEdit() {
+        setEditingId(null);
+        setDraft(DEFAULT_DRAFT);
     }
 
     async function signInWithGoogle() {
         if (!supabase) {
-            setStatus(
-                "Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
-            );
+            toast("Supabase not configured.", "error");
             return;
         }
-
         setAuthBusy(true);
         const { error } = await supabase.auth.signInWithOAuth({
             provider: "google",
-            options: {
-                redirectTo: window.location.origin,
-            },
+            options: { redirectTo: window.location.origin },
         });
-
         if (error) {
-            setStatus(`Google sign-in failed: ${error.message}`);
+            toast(`Sign-in failed: ${error.message}`, "error");
             setAuthBusy(false);
-            return;
         }
-
-        setStatus("Redirecting to Google sign-in...");
     }
 
     async function signOutUser() {
-        if (!supabase) {
-            return;
-        }
-
+        if (!supabase) return;
         setAuthBusy(true);
         const { error } = await supabase.auth.signOut();
         setAuthBusy(false);
-
-        if (error) {
-            setStatus(`Sign out failed: ${error.message}`);
-            return;
-        }
-
-        setStatus("Signed out of your account.");
+        if (error) toast(`Sign out failed: ${error.message}`, "error");
     }
 
     function handleThemeToggle() {
-        const nextTheme = theme === "dark" ? "light" : "dark";
-        setTheme(nextTheme);
-        document.documentElement.classList.toggle("dark", nextTheme === "dark");
-        document.documentElement.style.colorScheme = nextTheme;
-        window.localStorage.setItem(THEME_KEY, nextTheme);
+        const next = theme === "dark" ? "light" : "dark";
+        setTheme(next);
+        document.documentElement.classList.toggle("dark", next === "dark");
+        document.documentElement.style.colorScheme = next;
+        window.localStorage.setItem(THEME_KEY, next);
     }
 
     async function enableNotifications() {
         if (!("Notification" in window)) {
-            setStatus("This browser does not support notifications.");
+            toast("This browser does not support notifications.", "error");
             return;
         }
-
         const permission = await Notification.requestPermission();
         setNotificationPermission(permission);
         setCanUseNotifications(true);
-        setStatus(
+        toast(
             permission === "granted"
-                ? "Browser notifications are enabled."
+                ? "Browser notifications enabled."
                 : "Notifications remain off.",
         );
     }
 
-    async function handleCreateEvent() {
+    async function handleSaveEvent() {
         if (!draft.title.trim() || !draft.date) {
-            setStatus("Add a title and date to create your countdown.");
+            toast("Add a title and date first.", "error");
             return;
         }
 
         const reminders = draftToReminders(draft);
+
+        if (editingId) {
+            // Update existing event
+            const updated: DaytillEvent = {
+                ...events.find((e) => e.id === editingId)!,
+                title: draft.title.trim(),
+                date: draft.date,
+                time: draft.time || undefined,
+                category: draft.category,
+                recurringYearly: draft.recurringYearly,
+                reminders,
+                emailReminder: draft.emailReminder.trim() || undefined,
+            };
+
+            if (user && supabase) {
+                const { error } = await supabase
+                    .from("events")
+                    .update(eventToRow(user.id, updated))
+                    .eq("id", updated.id)
+                    .eq("user_id", user.id);
+
+                if (error) {
+                    toast(`Cloud update failed: ${error.message}`, "error");
+                    return;
+                }
+            }
+
+            setEvents((prev) =>
+                prev.map((e) => (e.id === editingId ? updated : e)),
+            );
+            setEditingId(null);
+            setDraft(DEFAULT_DRAFT);
+            toast(`Updated "${updated.title}".`);
+            return;
+        }
+
+        // Create new event
         const event: DaytillEvent = {
             id: crypto.randomUUID(),
             title: draft.title.trim(),
@@ -405,38 +440,29 @@ export function DaytillApp() {
             createdAt: new Date().toISOString(),
         };
 
-        let savedToCloud = false;
-
         if (user && supabase) {
             const { error } = await supabase
                 .from("events")
                 .upsert(eventToRow(user.id, event));
 
             if (error) {
-                setStatus(
-                    `Could not save to cloud: ${error.message}. Saved locally instead.`,
+                toast(
+                    `Cloud save failed: ${error.message} — saved locally.`,
+                    "error",
                 );
-                setEvents((current) => {
-                    const nextEvents = [...current, event];
-                    saveEvents(STORAGE_KEY, nextEvents);
-                    return nextEvents;
+                setEvents((prev) => {
+                    const next = [...prev, event];
+                    saveLocalEvents(next);
+                    return next;
                 });
                 setDraft({ ...DEFAULT_DRAFT, category: draft.category });
                 return;
-            } else {
-                savedToCloud = true;
             }
         }
 
-        setEvents((current) => [...current, event]);
+        setEvents((prev) => [...prev, event]);
         setDraft({ ...DEFAULT_DRAFT, category: draft.category });
-        if (!user || savedToCloud) {
-            setStatus(
-                savedToCloud
-                    ? `Saved ${event.title} to your account.`
-                    : `Saved ${event.title} as a live countdown card.`,
-            );
-        }
+        toast(`Added "${event.title}".`);
     }
 
     async function handleDeleteEvent(id: string) {
@@ -448,26 +474,25 @@ export function DaytillApp() {
                 .eq("user_id", user.id);
 
             if (error) {
-                setStatus(`Could not delete from cloud: ${error.message}`);
+                toast(`Delete failed: ${error.message}`, "error");
                 return;
             }
         }
 
-        setEvents((current) => {
-            const nextEvents = current.filter((event) => event.id !== id);
-            saveEvents(
-                STORAGE_KEY,
-                loadEvents(STORAGE_KEY).filter((event) => event.id !== id),
-            );
-            return nextEvents;
+        if (editingId === id) cancelEdit();
+
+        setEvents((prev) => {
+            const next = prev.filter((e) => e.id !== id);
+            if (!user) saveLocalEvents(next);
+            return next;
         });
-        setStatus("Event removed from your dashboard.");
+        toast("Event removed.");
     }
 
     async function copyShareUrl(event: DaytillEvent) {
         const url = buildShareUrl(event, window.location.origin);
         await window.navigator.clipboard.writeText(url);
-        setStatus("Share link copied to clipboard.");
+        toast("Share link copied.");
     }
 
     async function exportIcs(event: DaytillEvent) {
@@ -476,82 +501,119 @@ export function DaytillApp() {
             type: "text/calendar;charset=utf-8",
         });
         const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-
-        anchor.href = url;
-        anchor.download = `${event.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "daytill-event"}.ics`;
-        anchor.click();
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${event.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "event"}.ics`;
+        a.click();
         URL.revokeObjectURL(url);
-        setStatus("Calendar export downloaded.");
+        toast("Calendar file downloaded.");
     }
 
-    async function openCalendarLink(event: DaytillEvent) {
-        const url = buildCalendarUrl(event);
-        window.open(url, "_blank", "noopener,noreferrer");
-        setStatus("Google Calendar opened in a new tab.");
+    function openCalendarLink(event: DaytillEvent) {
+        window.open(buildCalendarUrl(event), "_blank", "noopener,noreferrer");
+        toast("Google Calendar opened.");
     }
 
-    function shareSubtitle(event: DaytillEvent) {
-        const countdown = summarizeCountdown(event, now);
-        return `${event.category} · ${countdown}`;
+    function openSharedPage(event: DaytillEvent) {
+        window.location.assign(
+            `/event/${event.id}?payload=${encodeEventPayload(event)}`,
+        );
     }
+
+    // ─── Render ───────────────────────────────────────────────────────────────
 
     return (
         <main className="relative min-h-screen overflow-hidden bg-page text-ink">
+            {/* Background mesh */}
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                <div className="mesh-gradient absolute left-1/2 -top-40 h-112 w-xl -translate-x-1/2 rounded-full blur-3xl" />
+                <div className="mesh-gradient absolute -top-40 left-1/2 h-112 w-xl -translate-x-1/2 rounded-full blur-3xl" />
                 <div className="mesh-orb mesh-orb-a absolute left-[10%] top-72 h-40 w-40 rounded-full blur-3xl" />
                 <div className="mesh-orb mesh-orb-b absolute right-[8%] top-128 h-56 w-56 rounded-full blur-3xl" />
                 <div className="noise-layer absolute inset-0 opacity-[0.04]" />
             </div>
 
+            {/* Toast stack */}
+            <div
+                aria-live="polite"
+                className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2"
+            >
+                {toasts.map((t) => (
+                    <div
+                        key={t.id}
+                        className={`flex items-start gap-3 rounded-xl border px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] text-sm font-medium backdrop-blur-sm ${
+                            t.type === "error"
+                                ? "border-error/30 bg-error-soft text-error-deep"
+                                : "border-hairline bg-surface/95 text-ink"
+                        }`}
+                    >
+                        <span className="max-w-xs">{t.message}</span>
+                        <button
+                            type="button"
+                            onClick={() => dismissToast(t.id)}
+                            aria-label="Dismiss"
+                            className="mt-0.5 shrink-0 text-mute hover:text-ink"
+                        >
+                            <svg
+                                viewBox="0 0 12 12"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                className="h-3 w-3"
+                            >
+                                <path
+                                    d="M1 1l10 10M11 1L1 11"
+                                    strokeLinecap="round"
+                                />
+                            </svg>
+                        </button>
+                    </div>
+                ))}
+            </div>
+
             <section className="relative mx-auto flex w-full max-w-350 flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+                {/* ── Hero panel ── */}
                 <section className="glass-panel rounded-card p-5 shadow-card lg:p-6">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="max-w-3xl space-y-4">
+                        <div className="max-w-3xl space-y-3">
                             <div className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface px-3 py-1 text-[12px] font-medium tracking-[0.2em] text-body uppercase shadow-[0_1px_0_rgba(0,0,0,0.03)]">
                                 <span className="h-2 w-2 rounded-full bg-link" />
-                                Daytill
+                                Live countdowns
                             </div>
-                            <div className="space-y-3">
-                                <h1 className="max-w-3xl text-4xl font-semibold tracking-tighter text-ink sm:text-5xl lg:text-6xl">
-                                    Track the moments that matter.
-                                </h1>
-                                <p className="max-w-2xl text-base leading-7 text-body sm:text-lg">
-                                    Create clean countdowns for exams,
-                                    birthdays, trips, deadlines, and
-                                    anniversaries. Every event lives locally,
-                                    updates every second, and can be shared with
-                                    a single link.
-                                </p>
-                            </div>
+                            <h1 className="max-w-3xl text-4xl font-semibold tracking-tighter text-ink sm:text-5xl lg:text-6xl">
+                                Track the moments that matter.
+                            </h1>
+                            <p className="max-w-2xl text-base leading-7 text-body sm:text-lg">
+                                Create countdowns for exams, birthdays, trips,
+                                deadlines, and anniversaries. Local-first,
+                                updates every second, shareable with one link.
+                            </p>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-3 self-start lg:self-auto">
+                        <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
                             <button
                                 type="button"
                                 onClick={handleThemeToggle}
-                                className="inline-flex h-11 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
+                                className="inline-flex h-9 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
                             >
-                                {theme === "dark" ? "Light mode" : "Dark mode"}
+                                {theme === "dark" ? "Light" : "Dark"}
                             </button>
                             <button
                                 type="button"
                                 onClick={enableNotifications}
                                 disabled={!canUseNotifications}
-                                className="inline-flex h-11 items-center rounded-pill border border-hairline bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover disabled:cursor-not-allowed disabled:border-hairline disabled:bg-surface disabled:text-body disabled:opacity-70"
+                                className="inline-flex h-9 items-center rounded-pill border border-hairline bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 {notificationPermission === "granted"
-                                    ? "Notifications on"
+                                    ? "Reminders on"
                                     : "Enable reminders"}
                             </button>
-                            {authConfigured ? (
+                            {/* {authConfigured ? (
                                 user ? (
                                     <button
                                         type="button"
                                         onClick={signOutUser}
                                         disabled={authBusy}
-                                        className="inline-flex h-11 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                        className="inline-flex h-9 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                         Sign out
                                     </button>
@@ -560,91 +622,75 @@ export function DaytillApp() {
                                         type="button"
                                         onClick={signInWithGoogle}
                                         disabled={authBusy}
-                                        className="inline-flex h-11 items-center gap-2 rounded-pill border border-hairline bg-surface px-4 text-sm font-semibold text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                        className="inline-flex h-9 items-center gap-2 rounded-pill border border-hairline bg-surface px-4 text-sm font-semibold text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
                                     >
-                                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)]">
-                                            <svg
-                                                viewBox="0 0 24 24"
-                                                aria-hidden="true"
-                                                className="h-3.5 w-3.5"
-                                            >
-                                                <path
-                                                    fill="#4285F4"
-                                                    d="M12 10.2v3.9h5.5c-.2 1.2-1.4 3.5-5.5 3.5-3.3 0-6-2.8-6-6.2S8.7 5.2 12 5.2c1.9 0 3.2.8 4 1.5l2.7-2.6C16.1 2.5 14.2 1.7 12 1.7 6.8 1.7 2.6 5.9 2.6 11.1S6.8 20.5 12 20.5c6.7 0 8.9-4.7 8.9-7.1 0-.5-.1-.9-.1-1.2H12Z"
-                                                />
-                                                <path
-                                                    fill="#34A853"
-                                                    d="M3.4 7.3 6.5 9.6c.8-2.4 3.1-4.2 5.5-4.2 1.9 0 3.2.8 4 1.5l2.7-2.6C16.1 2.5 14.2 1.7 12 1.7 8 1.7 4.6 4 3.4 7.3Z"
-                                                />
-                                                <path
-                                                    fill="#FBBC05"
-                                                    d="M12 20.5c2.2 0 4.1-.7 5.4-1.9l-2.5-2.1c-.8.5-1.8.9-2.9.9-4 0-5.3-2.7-5.5-3.5l-3.2 2.5C5.3 18.5 8.2 20.5 12 20.5Z"
-                                                />
-                                                <path
-                                                    fill="#EA4335"
-                                                    d="M20.9 11.7c0-.5-.1-.9-.1-1.2H12v3.9h5.5c-.3 1.6-1.5 2.9-2.6 3.1l2.5 2.1c1.6-1.5 3.5-3.7 3.5-7.9Z"
-                                                />
-                                            </svg>
-                                        </span>
-                                        Sign in with Google
+                                        <GoogleIcon />
+                                        Sign in
                                     </button>
                                 )
-                            ) : (
-                                <span className="rounded-pill border border-hairline bg-surface px-3 py-2 text-xs text-body">
-                                    Add Supabase env vars to enable account sync
-                                </span>
-                            )}
+                            ) : null} */}
                         </div>
                     </div>
 
                     <div className="mt-6 grid gap-3 sm:grid-cols-3">
                         <StatCard
                             label="Saved events"
-                            value={String(eventCount).padStart(2, "0")}
+                            value={String(events.length).padStart(2, "0")}
                             detail={
                                 user
-                                    ? "Stored in your Supabase account"
-                                    : "Stored in local browser storage"
+                                    ? `Synced · ${user.email ?? "account"}`
+                                    : "Local browser storage"
                             }
                         />
                         <StatCard
-                            label="Next countdown"
+                            label="Next event"
                             value={
                                 nextUpcoming
                                     ? formatCountdown(
                                           createTargetDate(nextUpcoming),
                                           now,
-                                      ).days
-                                    : "00"
+                                      ).days + "d"
+                                    : "—"
                             }
                             detail={
                                 nextUpcoming
                                     ? nextUpcoming.title
-                                    : "No upcoming event yet"
+                                    : "No upcoming event"
                             }
                         />
                         <StatCard
-                            label="Sharing"
-                            value="1 link"
-                            detail="Unique share page per event"
+                            label="Reminders"
+                            value={
+                                notificationPermission === "granted"
+                                    ? "On"
+                                    : "Off"
+                            }
+                            detail={
+                                notificationPermission === "granted"
+                                    ? "Browser notifications active"
+                                    : "Click Enable reminders above"
+                            }
                         />
                     </div>
                 </section>
 
-                <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+                {/* ── Form + Dashboard grid ── */}
+                <div
+                    id="event-form"
+                    ref={formRef}
+                    className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr] scroll-mt-20"
+                >
+                    {/* ── Event form ── */}
                     <section className="glass-panel rounded-card p-5 shadow-card lg:p-6">
-                        <div className="mb-6 flex items-start justify-between gap-4">
-                            <div>
-                                <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
-                                    Create event
-                                </p>
-                                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-ink">
-                                    Set a countdown in seconds.
-                                </h2>
-                            </div>
-                            <span className="rounded-full border border-hairline bg-surface px-3 py-1 text-xs font-medium text-body">
-                                {status}
-                            </span>
+                        <div className="mb-6">
+                            <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
+                                {editingId ? "Edit event" : "Create event"}
+                            </p>
+                            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-ink">
+                                {editingId
+                                    ? "Update your countdown."
+                                    : "Set a countdown in seconds."}
+                            </h2>
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-2">
@@ -654,10 +700,16 @@ export function DaytillApp() {
                                 </span>
                                 <input
                                     value={draft.title}
-                                    onChange={(event) =>
-                                        updateDraft("title", event.target.value)
+                                    onChange={(e) =>
+                                        updateDraft("title", e.target.value)
                                     }
-                                    placeholder="Exam, birthday, trip, deadline..."
+                                    onKeyDown={(
+                                        e: KeyboardEvent<HTMLInputElement>,
+                                    ) => {
+                                        if (e.key === "Enter")
+                                            void handleSaveEvent();
+                                    }}
+                                    placeholder="Exam, birthday, trip, deadline…"
                                     className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition placeholder:text-mute focus:border-link"
                                 />
                             </label>
@@ -669,8 +721,8 @@ export function DaytillApp() {
                                 <input
                                     type="date"
                                     value={draft.date}
-                                    onChange={(event) =>
-                                        updateDraft("date", event.target.value)
+                                    onChange={(e) =>
+                                        updateDraft("date", e.target.value)
                                     }
                                     className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
                                 />
@@ -679,12 +731,15 @@ export function DaytillApp() {
                             <label className="space-y-2">
                                 <span className="text-sm font-medium text-body">
                                     Time
+                                    <span className="ml-1.5 text-mute font-normal">
+                                        (optional)
+                                    </span>
                                 </span>
                                 <input
                                     type="time"
                                     value={draft.time}
-                                    onChange={(event) =>
-                                        updateDraft("time", event.target.value)
+                                    onChange={(e) =>
+                                        updateDraft("time", e.target.value)
                                     }
                                     className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
                                 />
@@ -696,33 +751,36 @@ export function DaytillApp() {
                                 </span>
                                 <select
                                     value={draft.category}
-                                    onChange={(event) =>
+                                    onChange={(e) =>
                                         updateDraft(
                                             "category",
-                                            event.target.value as EventCategory,
+                                            e.target.value as EventCategory,
                                         )
                                     }
                                     className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
                                 >
-                                    {CATEGORY_OPTIONS.map((category) => (
-                                        <option key={category} value={category}>
-                                            {category}
+                                    {CATEGORY_OPTIONS.map((c) => (
+                                        <option key={c} value={c}>
+                                            {c}
                                         </option>
                                     ))}
                                 </select>
                             </label>
 
                             <label className="space-y-2">
-                                <span className="text-sm font-medium text-body">
+                                <span className="flex items-center gap-2 text-sm font-medium text-body">
                                     Email reminder
+                                    <span className="rounded-full border border-hairline bg-canvas-soft-2 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-mute">
+                                        Pro
+                                    </span>
                                 </span>
                                 <input
                                     type="email"
                                     value={draft.emailReminder}
-                                    onChange={(event) =>
+                                    onChange={(e) =>
                                         updateDraft(
                                             "emailReminder",
-                                            event.target.value,
+                                            e.target.value,
                                         )
                                     }
                                     placeholder="name@example.com"
@@ -731,63 +789,35 @@ export function DaytillApp() {
                             </label>
 
                             <div className="rounded-[18px] border border-hairline bg-canvas-soft-2 p-4 md:col-span-2">
-                                <div className="flex flex-wrap items-center gap-3">
-                                    <label className="inline-flex items-center gap-2 text-sm text-body">
-                                        <input
-                                            type="checkbox"
-                                            checked={draft.recurringYearly}
-                                            onChange={(event) =>
-                                                updateDraft(
-                                                    "recurringYearly",
-                                                    event.target.checked,
-                                                )
-                                            }
-                                            className="h-4 w-4 rounded border-hairline text-link focus:ring-link"
-                                        />
-                                        Repeat yearly
-                                    </label>
-                                    <label className="inline-flex items-center gap-2 text-sm text-body">
-                                        <input
-                                            type="checkbox"
-                                            checked={draft.reminder7Days}
-                                            onChange={(event) =>
-                                                updateDraft(
-                                                    "reminder7Days",
-                                                    event.target.checked,
-                                                )
-                                            }
-                                            className="h-4 w-4 rounded border-hairline text-link focus:ring-link"
-                                        />
-                                        7 days before
-                                    </label>
-                                    <label className="inline-flex items-center gap-2 text-sm text-body">
-                                        <input
-                                            type="checkbox"
-                                            checked={draft.reminder1Day}
-                                            onChange={(event) =>
-                                                updateDraft(
-                                                    "reminder1Day",
-                                                    event.target.checked,
-                                                )
-                                            }
-                                            className="h-4 w-4 rounded border-hairline text-link focus:ring-link"
-                                        />
-                                        1 day before
-                                    </label>
-                                    <label className="inline-flex items-center gap-2 text-sm text-body">
-                                        <input
-                                            type="checkbox"
-                                            checked={draft.reminderDayOf}
-                                            onChange={(event) =>
-                                                updateDraft(
-                                                    "reminderDayOf",
-                                                    event.target.checked,
-                                                )
-                                            }
-                                            className="h-4 w-4 rounded border-hairline text-link focus:ring-link"
-                                        />
-                                        On the day
-                                    </label>
+                                <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                                    <CheckboxField
+                                        checked={draft.recurringYearly}
+                                        onChange={(v) =>
+                                            updateDraft("recurringYearly", v)
+                                        }
+                                        label="Repeat yearly"
+                                    />
+                                    <CheckboxField
+                                        checked={draft.reminder7Days}
+                                        onChange={(v) =>
+                                            updateDraft("reminder7Days", v)
+                                        }
+                                        label="7 days before"
+                                    />
+                                    <CheckboxField
+                                        checked={draft.reminder1Day}
+                                        onChange={(v) =>
+                                            updateDraft("reminder1Day", v)
+                                        }
+                                        label="1 day before"
+                                    />
+                                    <CheckboxField
+                                        checked={draft.reminderDayOf}
+                                        onChange={(v) =>
+                                            updateDraft("reminderDayOf", v)
+                                        }
+                                        label="On the day"
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -795,301 +825,147 @@ export function DaytillApp() {
                         <div className="mt-6 flex flex-wrap items-center gap-3">
                             <button
                                 type="button"
-                                onClick={handleCreateEvent}
+                                onClick={() => void handleSaveEvent()}
                                 className="inline-flex h-12 items-center rounded-pill bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover"
                             >
-                                Add countdown
+                                {editingId ? "Save changes" : "Add countdown"}
                             </button>
-                            <p className="text-sm text-body">
-                                Email is stored locally for now and ready for
-                                backend wiring later.
-                            </p>
+                            {editingId ? (
+                                <button
+                                    type="button"
+                                    onClick={cancelEdit}
+                                    className="inline-flex h-12 items-center rounded-pill border border-hairline bg-surface px-5 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
+                                >
+                                    Cancel
+                                </button>
+                            ) : null}
                         </div>
                     </section>
 
+                    {/* ── Dashboard ── */}
                     <section className="glass-panel rounded-card p-5 shadow-card lg:p-6">
-                        <div className="mb-6 flex items-start justify-between gap-4">
+                        <div className="mb-4 flex items-start justify-between gap-4">
                             <div>
                                 <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
                                     Dashboard
                                 </p>
                                 <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-ink">
-                                    Upcoming events, sorted by date.
+                                    Upcoming events.
                                 </h2>
                             </div>
-                            <div className="rounded-full border border-hairline bg-surface px-3 py-1 text-xs font-medium text-body">
-                                Live updates every second
-                            </div>
+                            <span className="rounded-full border border-hairline bg-surface px-3 py-1 text-xs font-medium text-mute">
+                                Live
+                            </span>
                         </div>
 
-                        {sortedEvents.length === 0 ? (
+                        {/* Category filter */}
+                        <div className="mb-4 flex flex-wrap gap-1.5">
+                            {(["All", ...CATEGORY_OPTIONS] as const).map(
+                                (c) => (
+                                    <button
+                                        key={c}
+                                        type="button"
+                                        onClick={() => setFilterCategory(c)}
+                                        className={`rounded-full px-3 py-1 text-[12px] font-medium transition ${
+                                            filterCategory === c
+                                                ? "bg-ink text-primary-foreground"
+                                                : "border border-hairline bg-surface text-body hover:border-hairline-strong hover:text-ink"
+                                        }`}
+                                    >
+                                        {c}
+                                    </button>
+                                ),
+                            )}
+                        </div>
+
+                        {filteredEvents.length === 0 ? (
                             <div className="rounded-3xl border border-dashed border-hairline bg-canvas-soft-2 p-8 text-center">
-                                <p className="text-lg font-medium text-ink">
-                                    Your dashboard is empty.
-                                </p>
-                                <p className="mt-2 text-sm leading-6 text-body">
-                                    Add an event to see a live countdown card,
-                                    share link, calendar export, and reminder
-                                    badges.
-                                </p>
+                                {events.length === 0 ? (
+                                    <>
+                                        <p className="text-base font-medium text-ink">
+                                            Your dashboard is empty.
+                                        </p>
+                                        <p className="mt-2 text-sm text-body">
+                                            Add an event using the form to see a
+                                            live countdown card.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-body">
+                                        No{" "}
+                                        <span className="font-medium text-ink">
+                                            {filterCategory}
+                                        </span>{" "}
+                                        events yet.
+                                    </p>
+                                )}
                             </div>
                         ) : (
                             <div className="grid gap-4">
-                                {sortedEvents.map((event) => (
+                                {filteredEvents.map((event) => (
                                     <EventCard
                                         key={event.id}
                                         event={event}
                                         now={now}
-                                        onOpen={() =>
-                                            window.location.assign(
-                                                `/event/${event.id}?payload=${encodeEventPayload(event)}`,
-                                            )
-                                        }
-                                        onCopy={() => copyShareUrl(event)}
+                                        isEditing={editingId === event.id}
+                                        subtitle={summarizeCountdown(
+                                            event,
+                                            now,
+                                        )}
+                                        onOpen={() => openSharedPage(event)}
+                                        onEdit={() => startEdit(event)}
+                                        onCopy={() => void copyShareUrl(event)}
                                         onDelete={() =>
-                                            handleDeleteEvent(event.id)
+                                            void handleDeleteEvent(event.id)
                                         }
-                                        onIcs={() => exportIcs(event)}
+                                        onIcs={() => void exportIcs(event)}
                                         onCalendar={() =>
                                             openCalendarLink(event)
                                         }
-                                        subtitle={shareSubtitle(event)}
                                     />
                                 ))}
                             </div>
                         )}
                     </section>
                 </div>
-
-                <section className="glass-panel rounded-card p-5 shadow-card lg:p-8">
-                    <div className="grid gap-8 lg:grid-cols-2">
-                        <article>
-                            <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
-                                About Daytill
-                            </p>
-                            <h2 className="mt-3 text-3xl font-semibold tracking-tighter text-ink">
-                                A focused countdown and reminder app built for
-                                real life.
-                            </h2>
-                            <p className="mt-4 text-base leading-8 text-body">
-                                Daytill is a multi-page countdown web app
-                                designed to help you stay ahead of important
-                                events. Whether you are preparing for a final
-                                exam, counting down to a product launch,
-                                planning a trip, or remembering an anniversary,
-                                Daytill gives you a precise live timer with
-                                days, hours, minutes, and seconds. Events can be
-                                grouped by category, sorted by the nearest date,
-                                and shared as clean public countdown pages.
-                            </p>
-                            <p className="mt-4 text-base leading-8 text-body">
-                                The app starts with local-first storage so you
-                                can use it instantly without sign-up. Reminder
-                                options for 7 days before, 1 day before, and the
-                                day itself make planning easier, and calendar
-                                exports help you keep your timeline in sync. The
-                                interface is intentionally minimal so your focus
-                                stays on what is coming next.
-                            </p>
-                        </article>
-
-                        <article>
-                            <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
-                                FAQ
-                            </p>
-                            <h2 className="mt-3 text-3xl font-semibold tracking-tighter text-ink">
-                                Common questions
-                            </h2>
-                            <div className="mt-5 space-y-3">
-                                {faqItems.map((item) => (
-                                    <details
-                                        key={item.question}
-                                        className="rounded-3xl border border-hairline bg-surface p-4"
-                                    >
-                                        <summary className="cursor-pointer text-sm font-semibold text-ink">
-                                            {item.question}
-                                        </summary>
-                                        <p className="mt-3 text-sm leading-7 text-body">
-                                            {item.answer}
-                                        </p>
-                                    </details>
-                                ))}
-                            </div>
-                        </article>
-                    </div>
-                </section>
             </section>
         </main>
     );
 }
 
-function StatCard({
+// ─── Small sub-components ────────────────────────────────────────────────────
+
+function CheckboxField({
+    checked,
+    onChange,
     label,
-    value,
-    detail,
 }: {
+    checked: boolean;
+    onChange: (v: boolean) => void;
     label: string;
-    value: string;
-    detail: string;
 }) {
     return (
-        <div className="rounded-3xl border border-hairline bg-surface p-4">
-            <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-body">
-                {label}
-            </p>
-            <p className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-ink">
-                {value}
-            </p>
-            <p className="mt-2 text-sm text-body">{detail}</p>
-        </div>
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-body">
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => onChange(e.target.checked)}
+                className="h-4 w-4 rounded border-hairline"
+            />
+            {label}
+        </label>
     );
 }
 
-function EventCard({
-    event,
-    now,
-    subtitle,
-    onOpen,
-    onCopy,
-    onDelete,
-    onIcs,
-    onCalendar,
-}: {
-    event: DaytillEvent;
-    now: number;
-    subtitle: string;
-    onOpen: () => void;
-    onCopy: () => void;
-    onDelete: () => void;
-    onIcs: () => void;
-    onCalendar: () => void;
-}) {
-    const targetDate = createTargetDate(event);
-    const countdown = formatCountdown(targetDate, now);
-    const expired = isEventExpired(event, now);
-
-    function handleCardClick() {
-        onOpen();
-    }
-
-    function handleCardKeyDown(eventKey: KeyboardEvent<HTMLElement>) {
-        if (eventKey.key === "Enter" || eventKey.key === " ") {
-            eventKey.preventDefault();
-            onOpen();
-        }
-    }
-
-    function stopCardClick(action: () => void) {
-        return (eventMouse: MouseEvent<HTMLButtonElement>) => {
-            eventMouse.stopPropagation();
-            action();
-        };
-    }
-
+function GoogleIcon() {
     return (
-        <article
-            role="button"
-            tabIndex={0}
-            onClick={handleCardClick}
-            onKeyDown={handleCardKeyDown}
-            className="rounded-3xl border border-hairline bg-surface p-4 shadow-[0_1px_1px_rgba(0,0,0,0.03)] transition hover:-translate-y-0.5 hover:border-hairline-strong hover:shadow-[0_20px_40px_rgba(0,0,0,0.05)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link"
-        >
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-canvas-soft-2 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.22em] text-body">
-                            {event.category}
-                        </span>
-                        {event.recurringYearly ? (
-                            <span className="rounded-full border border-link/20 bg-link/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.22em] text-link">
-                                Yearly
-                            </span>
-                        ) : null}
-                        {expired ? (
-                            <span className="rounded-full border border-warning/30 bg-warning-soft px-3 py-1 text-[11px] font-medium uppercase tracking-[0.22em] text-warning-deep">
-                                Passed
-                            </span>
-                        ) : null}
-                    </div>
-
-                    <div>
-                        <h3 className="text-xl font-semibold tracking-[-0.04em] text-ink">
-                            {event.title}
-                        </h3>
-                        <p className="mt-1 text-sm text-body">
-                            {formatDateLabel(targetDate)}
-                        </p>
-                        <p className="mt-1 text-sm text-body">{subtitle}</p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-4 gap-2 rounded-[20px] border border-hairline bg-canvas-soft-2 p-3 text-center">
-                    {[
-                        ["Days", countdown.days],
-                        ["Hours", countdown.hours],
-                        ["Minutes", countdown.minutes],
-                        ["Seconds", countdown.seconds],
-                    ].map(([label, value]) => (
-                        <div key={label} className="space-y-1">
-                            <div className="text-2xl font-semibold tracking-[-0.06em] text-ink">
-                                {value}
-                            </div>
-                            <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-body">
-                                {label}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-                {event.reminders.map((reminder) => (
-                    <span
-                        key={reminder}
-                        className="rounded-full border border-hairline bg-surface px-3 py-1 text-xs font-medium text-body"
-                    >
-                        {reminder === 0
-                            ? "On the day"
-                            : `${reminder} days before`}
-                    </span>
-                ))}
-                {event.emailReminder ? (
-                    <span className="rounded-full border border-link/20 bg-link/10 px-3 py-1 text-xs font-medium text-link">
-                        Email ready
-                    </span>
-                ) : null}
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                    type="button"
-                    onClick={stopCardClick(onCopy)}
-                    className="rounded-pill border border-hairline bg-surface px-4 py-2 text-sm font-medium text-ink transition hover:border-hairline-strong"
-                >
-                    Copy share link
-                </button>
-                <button
-                    type="button"
-                    onClick={stopCardClick(onCalendar)}
-                    className="rounded-pill border border-hairline bg-surface px-4 py-2 text-sm font-medium text-ink transition hover:border-hairline-strong"
-                >
-                    Google Calendar
-                </button>
-                <button
-                    type="button"
-                    onClick={stopCardClick(onIcs)}
-                    className="rounded-pill border border-hairline bg-surface px-4 py-2 text-sm font-medium text-ink transition hover:border-hairline-strong"
-                >
-                    Download ICS
-                </button>
-                <button
-                    type="button"
-                    onClick={stopCardClick(onDelete)}
-                    className="rounded-pill border border-error/30 bg-error-soft px-4 py-2 text-sm font-medium text-error-deep transition hover:border-error/50"
-                >
-                    Delete
-                </button>
-            </div>
-        </article>
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)]">
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5">
+                <path
+                    fill="#4285F4"
+                    d="M12 10.2v3.9h5.5c-.2 1.2-1.4 3.5-5.5 3.5-3.3 0-6-2.8-6-6.2S8.7 5.2 12 5.2c1.9 0 3.2.8 4 1.5l2.7-2.6C16.1 2.5 14.2 1.7 12 1.7 6.8 1.7 2.6 5.9 2.6 11.1S6.8 20.5 12 20.5c6.7 0 8.9-4.7 8.9-7.1 0-.5-.1-.9-.1-1.2H12Z"
+                />
+            </svg>
+        </span>
     );
 }

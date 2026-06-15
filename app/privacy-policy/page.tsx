@@ -1,51 +1,78 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ProseLayout, ProseSection } from "@/components/prose-layout";
 
 export const metadata: Metadata = {
     title: "Privacy Policy",
     description:
-        "Read the Daytill privacy policy describing local storage, Google sign-in, Supabase syncing, and analytics.",
+        "Daytill privacy policy — how we handle local storage, Google sign-in, Supabase sync, and analytics.",
 };
 
 export default function PrivacyPolicyPage() {
     return (
-        <main className="mx-auto min-h-screen w-full max-w-4xl px-4 py-12 text-ink sm:px-6 lg:px-8">
-            <article className="rounded-4xl border border-hairline bg-surface p-8 shadow-card sm:p-10">
-                <p className="text-[12px] font-medium uppercase tracking-[0.22em] text-body">
-                    Privacy Policy
+        <ProseLayout
+            eyebrow="Privacy Policy"
+            title="Your event data should stay under your control."
+        >
+            <ProseSection heading="Local-first by default">
+                <p>
+                    When you use Daytill without signing in, all event data
+                    stays in your browser's local storage. Nothing is sent to a
+                    server. You can clear this data at any time by removing
+                    events from the dashboard or clearing browser storage.
                 </p>
-                <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-ink sm:text-5xl">
-                    Your event data should stay under your control.
-                </h1>
-                <p className="mt-6 text-base leading-8 text-body">
-                    Daytill is designed with a local-first approach. When you
-                    use the app without signing in, event information stays in
-                    your browser local storage and is not transmitted to a
-                    remote account system.
+            </ProseSection>
+
+            <ProseSection heading="Google sign-in and cloud sync">
+                <p>
+                    If you choose to sign in with Google, your events are
+                    stored in a Supabase-backed database associated with your
+                    account. We store only the fields required to render
+                    countdown cards and reminders: title, date, category,
+                    reminder preferences, and an optional email address. We do
+                    not store passwords.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    If you sign in with Google, your events are stored in your
-                    Supabase account so they can sync across devices. We only
-                    store the event fields needed to render your countdown
-                    cards, reminders, and shared pages.
+            </ProseSection>
+
+            <ProseSection heading="Shared links">
+                <p>
+                    Share links encode the event payload in the URL. Only the
+                    fields you choose to share are visible to people who
+                    receive the link. You can delete an event at any time to
+                    make existing share links inactive.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    If you generate a share link, only the information embedded
-                    in that link is visible to people you choose to share it
-                    with. You can remove events at any time from your dashboard
-                    to stop local or cloud-backed use.
+            </ProseSection>
+
+            <ProseSection heading="Browser notifications">
+                <p>
+                    Notification permission is optional and is requested only
+                    when you click Enable reminders. You can revoke it at any
+                    time in your browser settings.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    Browser notification permissions are optional and controlled
-                    by your browser settings. Analytics, when configured, are
-                    used for aggregate traffic insights and do not replace your
-                    browser privacy controls. We do not intentionally sell
-                    personal event data.
+            </ProseSection>
+
+            <ProseSection heading="Analytics">
+                <p>
+                    When configured, aggregate analytics (Google Analytics) are
+                    used for traffic insights only. They do not override your
+                    browser's privacy controls or tracker-blocking extensions.
+                    We do not sell personal data.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    For privacy-related questions, data deletion requests, or
-                    account concerns, contact us at support@daytill.app.
+            </ProseSection>
+
+            <ProseSection heading="Contact">
+                <p>
+                    For privacy questions, data deletion requests, or account
+                    concerns, email{" "}
+                    <Link
+                        href="mailto:support@daytill.app"
+                        className="text-link underline underline-offset-2"
+                    >
+                        support@daytill.app
+                    </Link>
+                    .
                 </p>
-            </article>
-        </main>
+            </ProseSection>
+        </ProseLayout>
     );
 }

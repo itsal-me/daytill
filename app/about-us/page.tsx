@@ -1,43 +1,53 @@
 import type { Metadata } from "next";
+import { ProseLayout, ProseSection } from "@/components/prose-layout";
 
 export const metadata: Metadata = {
     title: "About Us",
     description:
-        "Learn about Daytill, the local-first countdown app for birthdays, exams, deadlines, trips, and anniversaries.",
+        "Daytill is a local-first countdown and reminder app for birthdays, exams, deadlines, trips, and anniversaries.",
 };
 
 export default function AboutUsPage() {
     return (
-        <main className="mx-auto min-h-screen w-full max-w-4xl px-4 py-12 text-ink sm:px-6 lg:px-8">
-            <article className="rounded-4xl border border-hairline bg-surface p-8 shadow-card sm:p-10">
-                <p className="text-[12px] font-medium uppercase tracking-[0.22em] text-body">
-                    About Daytill
+        <ProseLayout
+            eyebrow="About Daytill"
+            title="Built to help people stay ready for what matters."
+        >
+            <ProseSection>
+                <p>
+                    Daytill is a countdown and reminder app focused on clarity,
+                    speed, and reliability. It gives students, professionals,
+                    families, and teams one place to track exams, deadlines,
+                    birthdays, trips, anniversaries, launches, and other
+                    important milestones.
                 </p>
-                <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-ink sm:text-5xl">
-                    Built to help people stay ready for important dates.
-                </h1>
-                <p className="mt-6 text-base leading-8 text-body">
-                    Daytill is a countdown and reminder application focused on
-                    clarity, speed, and reliability. It gives students,
-                    professionals, families, and teams one place to track exams,
-                    deadlines, birthdays, trips, anniversaries, launches, and
-                    other important milestones.
+            </ProseSection>
+
+            <ProseSection heading="Local-first, always">
+                <p>
+                    Every event starts in your browser — no account, no
+                    sign-up, no friction. Your countdown data stays on your
+                    device by default. When you are ready to sync across
+                    devices, Google sign-in with Supabase is one click away.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    Our product philosophy is local-first, fast, and
-                    distraction-free. You can start creating event cards
-                    immediately without setting up an account, then optionally
-                    connect Google sign-in through Supabase when you want your
-                    countdowns to follow you across devices.
+            </ProseSection>
+
+            <ProseSection heading="Shareable by design">
+                <p>
+                    Each event generates a unique, embeddable share link that
+                    opens a clean, view-only countdown page. The same countdown
+                    works as a personal planning tool and as a public
+                    status page you can hand to a team or post anywhere.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    Every event can open its own shareable page, so the same
-                    countdown works both as a personal planning tool and a
-                    public view-only status page. Daytill continues to evolve
-                    with stronger reminder tools, accessibility improvements,
-                    and account syncing for users who need it.
+            </ProseSection>
+
+            <ProseSection heading="What's next">
+                <p>
+                    Daytill is actively developed. Upcoming: email reminders,
+                    recurring event support improvements, and richer
+                    notification options. We build in the open and ship fast.
                 </p>
-            </article>
-        </main>
+            </ProseSection>
+        </ProseLayout>
     );
 }

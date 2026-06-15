@@ -36,6 +36,11 @@ export const metadata: Metadata = {
         type: "website",
         locale: "en_US",
     },
+    icons: {
+        icon: "/favicon.svg",
+        shortcut: "/favicon.svg",
+        apple: "/daytill-mark.svg",
+    },
     robots: {
         index: true,
         follow: true,
@@ -65,7 +70,7 @@ export default function RootLayout({
         <html
             lang="en"
             suppressHydrationWarning
-            className={`${geistSans.variable} ${geistMono.variable}`}
+            className={`${geistSans.variable} ${geistMono.variable} scroll-smooth`}
         >
             <head>
                 <script dangerouslySetInnerHTML={{ __html: themeScript }} />

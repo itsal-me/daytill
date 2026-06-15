@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
     createTargetDate,
@@ -56,7 +57,7 @@ export function SharedEventView({
                     <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
                         Daytill shared page
                     </p>
-                    <h1 className="text-3xl font-semibold tracking-[-0.05em] text-ink">
+                    <h1 className="text-3xl font-semibold tracking-tighter text-ink">
                         This event could not be found.
                     </h1>
                     <p className="text-base leading-7 text-body">
@@ -80,7 +81,7 @@ export function SharedEventView({
                     <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
                         Shared countdown
                     </p>
-                    <h1 className="mt-4 text-4xl font-semibold tracking-[-0.05em] text-ink sm:text-5xl">
+                    <h1 className="mt-4 text-4xl font-semibold tracking-tighter text-ink sm:text-5xl">
                         {event.title}
                     </h1>
                     <p className="mt-3 text-sm uppercase tracking-[0.22em] text-body">
@@ -116,6 +117,18 @@ export function SharedEventView({
                             ? "This countdown has passed."
                             : "This page is view-only and updates live."}
                     </p>
+
+                    <div className="mt-8 border-t border-hairline/60 pt-8">
+                        <p className="text-sm text-body">
+                            Track your own countdowns for free.
+                        </p>
+                        <Link
+                            href="/"
+                            className="mt-4 inline-flex h-10 items-center rounded-pill bg-primary px-5 text-sm font-medium text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover"
+                        >
+                            Start for free
+                        </Link>
+                    </div>
                 </article>
             </section>
         </main>

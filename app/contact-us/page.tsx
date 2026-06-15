@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ProseLayout, ProseSection } from "@/components/prose-layout";
 
 export const metadata: Metadata = {
     title: "Contact Us",
@@ -8,35 +10,46 @@ export const metadata: Metadata = {
 
 export default function ContactUsPage() {
     return (
-        <main className="mx-auto min-h-screen w-full max-w-4xl px-4 py-12 text-ink sm:px-6 lg:px-8">
-            <article className="rounded-4xl border border-hairline bg-surface p-8 shadow-card sm:p-10">
-                <p className="text-[12px] font-medium uppercase tracking-[0.22em] text-body">
-                    Contact Us
+        <ProseLayout
+            eyebrow="Contact Us"
+            title="We would love to hear from you."
+        >
+            <ProseSection>
+                <p>
+                    For support questions, bug reports, feedback, and
+                    collaboration proposals, reach the Daytill team at:
                 </p>
-                <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-ink sm:text-5xl">
-                    We would love to hear from you.
-                </h1>
-                <p className="mt-6 text-base leading-8 text-body">
-                    If you have product feedback, bug reports, collaboration
-                    proposals, or support questions, contact the Daytill team
-                    at:
+                <p>
+                    <Link
+                        href="mailto:support@daytill.app"
+                        className="font-semibold text-ink underline underline-offset-2 hover:text-link"
+                    >
+                        support@daytill.app
+                    </Link>
                 </p>
-                <p className="mt-4 text-lg font-semibold text-ink">
-                    support@daytill.app
+            </ProseSection>
+
+            <ProseSection heading="Bug reports">
+                <p>
+                    Include your browser name and version, operating system,
+                    and a short description of what you expected vs what
+                    happened. If the issue involves reminders or shared links,
+                    mention whether the event was saved locally or while signed
+                    in to an account.
                 </p>
-                <p className="mt-6 text-base leading-8 text-body">
-                    We review messages regularly and aim to respond as quickly
-                    as possible. For issues related to reminders, browser
-                    notifications, shared links, or Supabase sign-in, include
-                    your browser and device details so we can diagnose faster.
+            </ProseSection>
+
+            <ProseSection heading="Response time">
+                <p>
+                    We review messages regularly and aim to respond within one
+                    business day. Security concerns are treated with priority —
+                    please mark your email subject with{" "}
+                    <span className="rounded bg-canvas-soft-2 px-1.5 py-0.5 font-mono text-sm text-ink">
+                        [security]
+                    </span>{" "}
+                    so we can triage quickly.
                 </p>
-                <p className="mt-4 text-base leading-8 text-body">
-                    If you are reporting a data issue, please mention whether
-                    the event was saved locally or while signed in to your
-                    account. That helps us identify whether the issue is browser
-                    storage, cloud sync, or OAuth related.
-                </p>
-            </article>
-        </main>
+            </ProseSection>
+        </ProseLayout>
     );
 }
