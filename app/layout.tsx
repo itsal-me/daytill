@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import { SiteShell } from "@/components/site-shell";
 import "./globals.css";
+import "./globalicon.css";
 
 const geistSans = Geist({
     subsets: ["latin"],

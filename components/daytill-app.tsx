@@ -595,17 +595,31 @@ export function DaytillApp() {
                                 onClick={handleThemeToggle}
                                 className="inline-flex h-9 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
                             >
-                                {theme === "dark" ? "Light" : "Dark"}
+                                {theme === "dark" ? (
+                                    <span className="material-symbols-outlined">
+                                        light_mode
+                                    </span>
+                                ) : (
+                                    <span className="material-symbols-outlined">
+                                        dark_mode
+                                    </span>
+                                )}
                             </button>
                             <button
                                 type="button"
                                 onClick={enableNotifications}
                                 disabled={!canUseNotifications}
-                                className="inline-flex h-9 items-center rounded-pill border border-hairline bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex items-center h-9 rounded-full border border-hairline bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                {notificationPermission === "granted"
-                                    ? "Reminders on"
-                                    : "Enable reminders"}
+                                {notificationPermission === "granted" ? (
+                                    <span className="material-symbols-outlined">
+                                        notifications_active
+                                    </span>
+                                ) : (
+                                    <span className="material-symbols-outlined">
+                                        notifications_paused
+                                    </span>
+                                )}
                             </button>
                             {/* {authConfigured ? (
                                 user ? (

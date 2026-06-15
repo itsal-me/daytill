@@ -38,13 +38,10 @@ export function SiteShell({ children }: { children: ReactNode }) {
                         className="flex items-center gap-2.5 shrink-0"
                         onClick={() => setMobileOpen(false)}
                     >
-                        <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-primary shadow-card">
-                            <img
-                                src="/daytill-mark.svg"
-                                alt=""
-                                aria-hidden="true"
-                                className="h-8 w-8 rounded-[10px]"
-                            />
+                        <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-white dark:bg-gray-800 shadow-card">
+                            <span className="material-symbols-outlined">
+                                upcoming
+                            </span>
                         </span>
                         <span className="text-sm font-semibold tracking-[-0.04em] text-ink">
                             Daytill
