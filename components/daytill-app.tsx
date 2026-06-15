@@ -118,11 +118,16 @@ export function DaytillApp() {
     const [events, setEvents] = useState<DaytillEvent[]>([]);
     const [draft, setDraft] = useState<DraftState>(DEFAULT_DRAFT);
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [filterCategory, setFilterCategory] = useState<EventCategory | "All">("All");
+    const [filterCategory, setFilterCategory] = useState<EventCategory | "All">(
+        "All",
+    );
     const [now, setNow] = useState(() => Date.now());
     const [toasts, setToasts] = useState<Toast[]>([]);
-    const [notificationLog, setNotificationLog] = useState<Set<string>>(() => new Set());
-    const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+    const [notificationLog, setNotificationLog] = useState<Set<string>>(
+        () => new Set(),
+    );
+    const [notificationPermission, setNotificationPermission] =
+        useState<NotificationPermission>("default");
     const [canUseNotifications, setCanUseNotifications] = useState(false);
     const [user, setUser] = useState<User | null>(null);
     const [eventsLoaded, setEventsLoaded] = useState(false);
@@ -131,11 +136,17 @@ export function DaytillApp() {
 
     // ─── Toast helpers ────────────────────────────────────────────────────────
 
-    const toast = useCallback((message: string, type: Toast["type"] = "info") => {
-        const id = crypto.randomUUID();
-        setToasts((prev) => [...prev, { id, message, type }]);
-        setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
-    }, []);
+    const toast = useCallback(
+        (message: string, type: Toast["type"] = "info") => {
+            const id = crypto.randomUUID();
+            setToasts((prev) => [...prev, { id, message, type }]);
+            setTimeout(
+                () => setToasts((prev) => prev.filter((t) => t.id !== id)),
+                4000,
+            );
+        },
+        [],
+    );
 
     const dismissToast = useCallback((id: string) => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -146,7 +157,9 @@ export function DaytillApp() {
     useEffect(() => {
         setNotificationLog(loadNotificationLog());
         if (typeof window === "undefined") return;
-        setNotificationPermission("Notification" in window ? Notification.permission : "denied");
+        setNotificationPermission(
+            "Notification" in window ? Notification.permission : "denied",
+        );
         setCanUseNotifications("Notification" in window);
     }, []);
 
@@ -165,10 +178,16 @@ export function DaytillApp() {
         let mounted = true;
 
         async function loadCloudEvents(userId: string) {
-            const { data, error } = await c.from("events").select("*").eq("user_id", userId);
+            const { data, error } = await c
+                .from("events")
+                .select("*")
+                .eq("user_id", userId);
             if (!mounted) return;
             if (error) {
-                toast("Could not load cloud events — showing local data.", "error");
+                toast(
+                    "Could not load cloud events — showing local data.",
+                    "error",
+                );
                 setEvents(loadEvents(STORAGE_KEY));
                 setEventsLoaded(true);
                 return;
@@ -179,7 +198,9 @@ export function DaytillApp() {
         }
 
         async function init() {
-            const { data: { session } } = await c.auth.getSession();
+            const {
+                data: { session },
+            } = await c.auth.getSession();
             if (!mounted) return;
             const sessionUser = session?.user ?? null;
             setUser(sessionUser);
@@ -193,7 +214,9 @@ export function DaytillApp() {
 
         void init();
 
-        const { data: { subscription } } = c.auth.onAuthStateChange((_event, session) => {
+        const {
+            data: { subscription },
+        } = c.auth.onAuthStateChange((_event, session) => {
             const sessionUser = session?.user ?? null;
             setUser(sessionUser);
             if (sessionUser) {
@@ -208,7 +231,7 @@ export function DaytillApp() {
             mounted = false;
             subscription.unsubscribe();
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [supabase]);
 
     // ─── Persist to localStorage (local-only mode) ────────────────────────────
@@ -229,7 +252,8 @@ export function DaytillApp() {
     // ─── Browser notifications ────────────────────────────────────────────────
 
     useEffect(() => {
-        if (typeof window === "undefined" || !("Notification" in window)) return;
+        if (typeof window === "undefined" || !("Notification" in window))
+            return;
         if (Notification.permission !== "granted") return;
 
         const nextLog = new Set(notificationLog);
@@ -237,10 +261,19 @@ export function DaytillApp() {
         for (const event of events) {
             const targetDate = createTargetDate(event);
             for (const days of event.reminders) {
-                const reminderAt = new Date(targetDate.getTime() - days * 86400000);
+                const reminderAt = new Date(
+                    targetDate.getTime() - days * 86400000,
+                );
                 const key = `${event.id}:${targetDate.toISOString().slice(0, 10)}:${days}`;
-                if (now >= reminderAt.getTime() && now < targetDate.getTime() && !nextLog.has(key)) {
-                    const label = days === 0 ? "today" : `${days} day${days === 1 ? "" : "s"} away`;
+                if (
+                    now >= reminderAt.getTime() &&
+                    now < targetDate.getTime() &&
+                    !nextLog.has(key)
+                ) {
+                    const label =
+                        days === 0
+                            ? "today"
+                            : `${days} day${days === 1 ? "" : "s"} away`;
                     new Notification(`Daytill: ${event.title}`, {
                         body: `Your ${event.category.toLowerCase()} is ${label}.`,
                     });
@@ -260,11 +293,15 @@ export function DaytillApp() {
     const sortedEvents = useMemo(() => sortEvents(events, now), [events, now]);
 
     const filteredEvents = useMemo(
-        () => filterCategory === "All" ? sortedEvents : sortedEvents.filter((e) => e.category === filterCategory),
+        () =>
+            filterCategory === "All"
+                ? sortedEvents
+                : sortedEvents.filter((e) => e.category === filterCategory),
         [sortedEvents, filterCategory],
     );
 
-    const nextUpcoming = sortedEvents.find((e) => !isEventExpired(e, now)) ?? sortedEvents[0];
+    const nextUpcoming =
+        sortedEvents.find((e) => !isEventExpired(e, now)) ?? sortedEvents[0];
 
     // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -291,7 +328,11 @@ export function DaytillApp() {
         const permission = await Notification.requestPermission();
         setNotificationPermission(permission);
         setCanUseNotifications(true);
-        toast(permission === "granted" ? "Browser notifications enabled." : "Notifications remain off.");
+        toast(
+            permission === "granted"
+                ? "Browser notifications enabled."
+                : "Notifications remain off.",
+        );
     }
 
     async function handleSaveEvent() {
@@ -329,7 +370,9 @@ export function DaytillApp() {
                 }
             }
 
-            setEvents((prev) => prev.map((e) => (e.id === editingId ? updated : e)));
+            setEvents((prev) =>
+                prev.map((e) => (e.id === editingId ? updated : e)),
+            );
             setEditingId(null);
             setDraft(DEFAULT_DRAFT);
             toast(`Updated "${updated.title}".`);
@@ -349,9 +392,14 @@ export function DaytillApp() {
         };
 
         if (user && supabase) {
-            const { error } = await supabase.from("events").upsert(eventToRow(user.id, event));
+            const { error } = await supabase
+                .from("events")
+                .upsert(eventToRow(user.id, event));
             if (error) {
-                toast(`Cloud save failed: ${error.message} — saved locally.`, "error");
+                toast(
+                    `Cloud save failed: ${error.message} — saved locally.`,
+                    "error",
+                );
                 setEvents((prev) => {
                     const next = [...prev, event];
                     saveLocalEvents(next);
@@ -391,13 +439,34 @@ export function DaytillApp() {
     }
 
     async function copyShareUrl(event: DaytillEvent) {
-        await window.navigator.clipboard.writeText(buildShareUrl(event, window.location.origin));
+        try {
+            const res = await fetch("/api/share", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(event),
+            });
+            if (res.ok) {
+                const { shareId } = (await res.json()) as { shareId: string };
+                await window.navigator.clipboard.writeText(
+                    `${window.location.origin}/event/${shareId}`,
+                );
+                toast("Share link copied.");
+                return;
+            }
+        } catch {
+            // network error — fall through to long payload URL
+        }
+        await window.navigator.clipboard.writeText(
+            buildShareUrl(event, window.location.origin),
+        );
         toast("Share link copied.");
     }
 
     async function exportIcs(event: DaytillEvent) {
         const targetDate = createTargetDate(event);
-        const blob = new Blob([buildIcsDocument(event, targetDate)], { type: "text/calendar;charset=utf-8" });
+        const blob = new Blob([buildIcsDocument(event, targetDate)], {
+            type: "text/calendar;charset=utf-8",
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -413,7 +482,9 @@ export function DaytillApp() {
     }
 
     function openSharedPage(event: DaytillEvent) {
-        window.location.assign(`/event/${event.id}?payload=${encodeEventPayload(event)}`);
+        window.location.assign(
+            `/event/${event.id}?payload=${encodeEventPayload(event)}`,
+        );
     }
 
     // ─── Render ───────────────────────────────────────────────────────────────
@@ -429,7 +500,10 @@ export function DaytillApp() {
             </div>
 
             {/* Toast stack */}
-            <div aria-live="polite" className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2 pointer-events-none">
+            <div
+                aria-live="polite"
+                className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2 pointer-events-none"
+            >
                 {toasts.map((t) => (
                     <div
                         key={t.id}
@@ -446,8 +520,17 @@ export function DaytillApp() {
                             aria-label="Dismiss"
                             className="mt-0.5 shrink-0 text-mute hover:text-ink"
                         >
-                            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
-                                <path d="M1 1l10 10M11 1L1 11" strokeLinecap="round" />
+                            <svg
+                                viewBox="0 0 12 12"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                className="h-3 w-3"
+                            >
+                                <path
+                                    d="M1 1l10 10M11 1L1 11"
+                                    strokeLinecap="round"
+                                />
                             </svg>
                         </button>
                     </div>
@@ -455,7 +538,6 @@ export function DaytillApp() {
             </div>
 
             <section className="relative mx-auto flex w-full max-w-350 flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-
                 {/* ── Hero panel ── */}
                 <section className="glass-panel rounded-card p-5 shadow-card lg:p-6">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -480,7 +562,11 @@ export function DaytillApp() {
                                 type="button"
                                 onClick={enableNotifications}
                                 disabled={!canUseNotifications}
-                                title={notificationPermission === "granted" ? "Reminders active" : "Enable browser reminders"}
+                                title={
+                                    notificationPermission === "granted"
+                                        ? "Reminders active"
+                                        : "Enable browser reminders"
+                                }
                                 className={`flex h-10 w-10 items-center justify-center rounded-full border transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 ${
                                     notificationPermission === "granted"
                                         ? "border-link/30 bg-link/10 text-link hover:border-link/50"
@@ -504,16 +590,35 @@ export function DaytillApp() {
                         <StatCard
                             label="Saved events"
                             value={String(events.length).padStart(2, "0")}
-                            detail={user ? `Synced · ${user.email ?? "account"}` : "Local browser storage"}
+                            detail={
+                                user
+                                    ? `Synced · ${user.email ?? "account"}`
+                                    : "Local browser storage"
+                            }
                         />
                         <StatCard
                             label="Next event"
-                            value={nextUpcoming ? formatCountdown(createTargetDate(nextUpcoming), now).days + "d" : "—"}
-                            detail={nextUpcoming ? nextUpcoming.title : "No upcoming event"}
+                            value={
+                                nextUpcoming
+                                    ? formatCountdown(
+                                          createTargetDate(nextUpcoming),
+                                          now,
+                                      ).days + "d"
+                                    : "—"
+                            }
+                            detail={
+                                nextUpcoming
+                                    ? nextUpcoming.title
+                                    : "No upcoming event"
+                            }
                         />
                         <StatCard
                             label="Reminders"
-                            value={notificationPermission === "granted" ? "On" : "Off"}
+                            value={
+                                notificationPermission === "granted"
+                                    ? "On"
+                                    : "Off"
+                            }
                             detail={
                                 notificationPermission === "granted"
                                     ? "Browser notifications active"
@@ -524,8 +629,11 @@ export function DaytillApp() {
                 </section>
 
                 {/* ── Form + Dashboard grid ── */}
-                <div ref={formRef} id="event-form" className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-
+                <div
+                    ref={formRef}
+                    id="event-form"
+                    className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]"
+                >
                     {/* ── Event form ── */}
                     <section className="glass-panel rounded-card p-5 shadow-card lg:p-6">
                         <div className="mb-6">
@@ -533,18 +641,27 @@ export function DaytillApp() {
                                 {editingId ? "Edit event" : "Create event"}
                             </p>
                             <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-ink">
-                                {editingId ? "Update your countdown." : "Set a countdown in seconds."}
+                                {editingId
+                                    ? "Update your countdown."
+                                    : "Set a countdown in seconds."}
                             </h2>
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <label className="space-y-2 md:col-span-2">
-                                <span className="text-sm font-medium text-body">Event title</span>
+                                <span className="text-sm font-medium text-body">
+                                    Event title
+                                </span>
                                 <input
                                     value={draft.title}
-                                    onChange={(e) => updateDraft("title", e.target.value)}
-                                    onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-                                        if (e.key === "Enter") void handleSaveEvent();
+                                    onChange={(e) =>
+                                        updateDraft("title", e.target.value)
+                                    }
+                                    onKeyDown={(
+                                        e: KeyboardEvent<HTMLInputElement>,
+                                    ) => {
+                                        if (e.key === "Enter")
+                                            void handleSaveEvent();
                                     }}
                                     placeholder="Exam, birthday, trip, deadline…"
                                     className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition placeholder:text-mute focus:border-link"
@@ -552,11 +669,15 @@ export function DaytillApp() {
                             </label>
 
                             <label className="space-y-2">
-                                <span className="text-sm font-medium text-body">Date</span>
+                                <span className="text-sm font-medium text-body">
+                                    Date
+                                </span>
                                 <input
                                     type="date"
                                     value={draft.date}
-                                    onChange={(e) => updateDraft("date", e.target.value)}
+                                    onChange={(e) =>
+                                        updateDraft("date", e.target.value)
+                                    }
                                     className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
                                 />
                             </label>
@@ -564,25 +685,38 @@ export function DaytillApp() {
                             <label className="space-y-2">
                                 <span className="text-sm font-medium text-body">
                                     Time
-                                    <span className="ml-1.5 font-normal text-mute">(optional)</span>
+                                    <span className="ml-1.5 font-normal text-mute">
+                                        (optional)
+                                    </span>
                                 </span>
                                 <input
                                     type="time"
                                     value={draft.time}
-                                    onChange={(e) => updateDraft("time", e.target.value)}
+                                    onChange={(e) =>
+                                        updateDraft("time", e.target.value)
+                                    }
                                     className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
                                 />
                             </label>
 
                             <label className="space-y-2">
-                                <span className="text-sm font-medium text-body">Category</span>
+                                <span className="text-sm font-medium text-body">
+                                    Category
+                                </span>
                                 <select
                                     value={draft.category}
-                                    onChange={(e) => updateDraft("category", e.target.value as EventCategory)}
+                                    onChange={(e) =>
+                                        updateDraft(
+                                            "category",
+                                            e.target.value as EventCategory,
+                                        )
+                                    }
                                     className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
                                 >
                                     {CATEGORY_OPTIONS.map((c) => (
-                                        <option key={c} value={c}>{c}</option>
+                                        <option key={c} value={c}>
+                                            {c}
+                                        </option>
                                     ))}
                                 </select>
                             </label>
@@ -597,7 +731,12 @@ export function DaytillApp() {
                                 <input
                                     type="email"
                                     value={draft.emailReminder}
-                                    onChange={(e) => updateDraft("emailReminder", e.target.value)}
+                                    onChange={(e) =>
+                                        updateDraft(
+                                            "emailReminder",
+                                            e.target.value,
+                                        )
+                                    }
                                     placeholder="name@example.com"
                                     className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition placeholder:text-mute focus:border-link"
                                 />
@@ -607,22 +746,30 @@ export function DaytillApp() {
                                 <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
                                     <CheckboxField
                                         checked={draft.recurringYearly}
-                                        onChange={(v) => updateDraft("recurringYearly", v)}
+                                        onChange={(v) =>
+                                            updateDraft("recurringYearly", v)
+                                        }
                                         label="Repeat yearly"
                                     />
                                     <CheckboxField
                                         checked={draft.reminder7Days}
-                                        onChange={(v) => updateDraft("reminder7Days", v)}
+                                        onChange={(v) =>
+                                            updateDraft("reminder7Days", v)
+                                        }
                                         label="7 days before"
                                     />
                                     <CheckboxField
                                         checked={draft.reminder1Day}
-                                        onChange={(v) => updateDraft("reminder1Day", v)}
+                                        onChange={(v) =>
+                                            updateDraft("reminder1Day", v)
+                                        }
                                         label="1 day before"
                                     />
                                     <CheckboxField
                                         checked={draft.reminderDayOf}
-                                        onChange={(v) => updateDraft("reminderDayOf", v)}
+                                        onChange={(v) =>
+                                            updateDraft("reminderDayOf", v)
+                                        }
                                         label="On the day"
                                     />
                                 </div>
@@ -667,37 +814,42 @@ export function DaytillApp() {
 
                         {/* Category filter */}
                         <div className="mb-4 flex flex-wrap gap-1.5">
-                            {(["All", ...CATEGORY_OPTIONS] as const).map((c) => (
-                                <button
-                                    key={c}
-                                    type="button"
-                                    onClick={() => setFilterCategory(c)}
-                                    className={`rounded-full px-3 py-1 text-[12px] font-medium transition ${
-                                        filterCategory === c
-                                            ? "bg-ink text-primary-foreground"
-                                            : "border border-hairline bg-surface text-body hover:border-hairline-strong hover:text-ink"
-                                    }`}
-                                >
-                                    {c}
-                                </button>
-                            ))}
+                            {(["All", ...CATEGORY_OPTIONS] as const).map(
+                                (c) => (
+                                    <button
+                                        key={c}
+                                        type="button"
+                                        onClick={() => setFilterCategory(c)}
+                                        className={`rounded-full px-3 py-1 text-[12px] font-medium transition ${
+                                            filterCategory === c
+                                                ? "bg-ink text-primary-foreground"
+                                                : "border border-hairline bg-surface text-body hover:border-hairline-strong hover:text-ink"
+                                        }`}
+                                    >
+                                        {c}
+                                    </button>
+                                ),
+                            )}
                         </div>
 
                         {filteredEvents.length === 0 ? (
-                            <div className="rounded-3xl border border-dashed border-hairline bg-canvas-soft-2 p-8 text-center">
+                            <div className="rounded-3xl border border-dashed border-hairline bg-canvas-soft-2 p-8 h-80 text-center">
                                 {events.length === 0 ? (
                                     <>
                                         <p className="text-base font-medium text-ink">
                                             Your dashboard is empty.
                                         </p>
                                         <p className="mt-2 text-sm text-body">
-                                            Add an event using the form to see a live countdown card.
+                                            Add an event using the form to see a
+                                            live countdown card.
                                         </p>
                                     </>
                                 ) : (
                                     <p className="text-sm text-body">
                                         No{" "}
-                                        <span className="font-medium text-ink">{filterCategory}</span>{" "}
+                                        <span className="font-medium text-ink">
+                                            {filterCategory}
+                                        </span>{" "}
                                         events yet.
                                     </p>
                                 )}
@@ -710,13 +862,20 @@ export function DaytillApp() {
                                         event={event}
                                         now={now}
                                         isEditing={editingId === event.id}
-                                        subtitle={summarizeCountdown(event, now)}
+                                        subtitle={summarizeCountdown(
+                                            event,
+                                            now,
+                                        )}
                                         onOpen={() => openSharedPage(event)}
                                         onEdit={() => startEdit(event)}
                                         onCopy={() => void copyShareUrl(event)}
-                                        onDelete={() => void handleDeleteEvent(event.id)}
+                                        onDelete={() =>
+                                            void handleDeleteEvent(event.id)
+                                        }
                                         onIcs={() => void exportIcs(event)}
-                                        onCalendar={() => openCalendarLink(event)}
+                                        onCalendar={() =>
+                                            openCalendarLink(event)
+                                        }
                                     />
                                 ))}
                             </div>

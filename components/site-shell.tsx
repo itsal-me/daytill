@@ -194,7 +194,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
                         className="flex shrink-0 items-center gap-2.5"
                         onClick={() => setMobileOpen(false)}
                     >
-                        <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-ink text-on-primary shadow-card">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-ink text-primary-foreground shadow-card">
                             <span
                                 className="material-symbols-outlined"
                                 style={{ fontSize: "18px" }}
@@ -407,7 +407,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
                                 href="/"
                                 className="flex items-center gap-2.5"
                             >
-                                <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-ink text-on-primary">
+                                <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-ink text-primary-foreground">
                                     <span
                                         className="material-symbols-outlined"
                                         style={{ fontSize: "18px" }}

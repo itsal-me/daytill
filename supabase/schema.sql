@@ -31,6 +31,24 @@ create table if not exists public.event_email_notifications (
 create index if not exists event_email_notifications_user_idx
   on public.event_email_notifications(user_id, sent_at desc);
 
+-- ─── Shortened share links ────────────────────────────────────────────────────
+
+create table if not exists public.event_shares (
+  id text primary key,               -- 7-char random slug
+  event_data jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.event_shares enable row level security;
+
+drop policy if exists "Anyone can read event shares" on public.event_shares;
+create policy "Anyone can read event shares"
+  on public.event_shares for select using (true);
+
+drop policy if exists "Anyone can create event shares" on public.event_shares;
+create policy "Anyone can create event shares"
+  on public.event_shares for insert with check (true);
+
 alter table public.events enable row level security;
 alter table public.event_email_notifications enable row level security;
 
