@@ -833,7 +833,7 @@ export function DaytillApp() {
                         </div>
 
                         {filteredEvents.length === 0 ? (
-                            <div className="rounded-3xl border border-dashed border-hairline bg-canvas-soft-2 p-8 h-80 text-center">
+                            <div className="rounded-3xl border border-dashed border-hairline bg-canvas-soft-2 p-8 h-80 flex items-center justify-center text-center">
                                 {events.length === 0 ? (
                                     <>
                                         <p className="text-base font-medium text-ink">
