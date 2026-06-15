@@ -40,6 +40,21 @@ export function getSupabaseBrowserClient() {
     return browserClient;
 }
 
+export async function getUserIsPro(
+    client: SupabaseClient,
+    userId: string,
+): Promise<boolean> {
+    const { data, error } = await client
+        .from("user_plans")
+        .select("plan, expires_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    if (error || !data) return false;
+    if (data.expires_at && new Date(data.expires_at) < new Date()) return false;
+    return data.plan === "pro";
+}
+
 export function rowToEvent(row: EventRow): DaytillEvent {
     const category = row.category as EventCategory;
 

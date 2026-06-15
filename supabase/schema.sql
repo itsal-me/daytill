@@ -49,6 +49,23 @@ drop policy if exists "Anyone can create event shares" on public.event_shares;
 create policy "Anyone can create event shares"
   on public.event_shares for insert with check (true);
 
+-- ─── Pro plan membership ──────────────────────────────────────────────────────
+-- Grant pro manually via the Supabase dashboard or SQL:
+--   insert into public.user_plans (user_id) values ('<uuid>');
+
+create table if not exists public.user_plans (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  plan text not null default 'pro',   -- 'pro' is the only non-free plan for now
+  granted_at timestamptz not null default now(),
+  expires_at timestamptz             -- null = lifetime grant
+);
+
+alter table public.user_plans enable row level security;
+
+drop policy if exists "Users can read own plan" on public.user_plans;
+create policy "Users can read own plan"
+  on public.user_plans for select using (auth.uid() = user_id);
+
 alter table public.events enable row level security;
 alter table public.event_email_notifications enable row level security;
 
