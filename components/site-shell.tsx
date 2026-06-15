@@ -51,7 +51,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
                     >
                         <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-white dark:bg-gray-800 shadow-card">
                             <span className="material-symbols-outlined">
-                                upcoming
+                                event_upcoming
                             </span>
                         </span>
                         <span className="text-sm font-semibold tracking-[-0.04em] text-ink">
@@ -117,43 +117,59 @@ export function SiteShell({ children }: { children: ReactNode }) {
                             )}
                         </button>
                     </div>
-
-                    <button
-                        type="button"
-                        aria-label={mobileOpen ? "Close menu" : "Open menu"}
-                        onClick={() => setMobileOpen((v) => !v)}
-                        className="flex h-8 w-8 items-center justify-center rounded-md border border-hairline text-ink transition hover:border-hairline-strong md:hidden"
-                    >
-                        {mobileOpen ? (
-                            <svg
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                                className="h-4 w-4"
-                                aria-hidden="true"
-                            >
-                                <path
-                                    d="M3 3l10 10M13 3L3 13"
-                                    strokeLinecap="round"
-                                />
-                            </svg>
-                        ) : (
-                            <svg
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                                className="h-4 w-4"
-                                aria-hidden="true"
-                            >
-                                <path
-                                    d="M2 4h12M2 8h12M2 12h12"
-                                    strokeLinecap="round"
-                                />
-                            </svg>
-                        )}
-                    </button>
+                    <div className="flex items-center gap-2 md:hidden">
+                        <button
+                            type="button"
+                            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+                            onClick={() => setMobileOpen((v) => !v)}
+                            className="flex h-8 w-8 items-center justify-center rounded-md border border-hairline text-ink transition hover:border-hairline-strong md:hidden"
+                        >
+                            {mobileOpen ? (
+                                <svg
+                                    viewBox="0 0 16 16"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                    className="h-4 w-4"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M3 3l10 10M13 3L3 13"
+                                        strokeLinecap="round"
+                                    />
+                                </svg>
+                            ) : (
+                                <svg
+                                    viewBox="0 0 16 16"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                    className="h-4 w-4"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M2 4h12M2 8h12M2 12h12"
+                                        strokeLinecap="round"
+                                    />
+                                </svg>
+                            )}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleThemeToggle}
+                            className="inline-flex h-9 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
+                        >
+                            {theme === "dark" ? (
+                                <span className="material-symbols-outlined">
+                                    light_mode
+                                </span>
+                            ) : (
+                                <span className="material-symbols-outlined">
+                                    dark_mode
+                                </span>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 {mobileOpen && (
@@ -174,13 +190,14 @@ export function SiteShell({ children }: { children: ReactNode }) {
                                 </Link>
                             ))}
                             <div className="mt-3 flex gap-2 border-t border-hairline/60 pt-3">
-                                <Link
-                                    href="/"
-                                    onClick={() => setMobileOpen(false)}
-                                    className="inline-flex h-9 flex-1 items-center justify-center rounded-md border border-hairline bg-surface text-sm font-medium text-ink"
+                                <button
+                                    type="button"
+                                    disabled
+                                    className="inline-flex flex-1 h-9 items-center justify-center gap-2 rounded-pill border border-hairline bg-surface px-4 text-sm font-semibold text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    Log in
-                                </Link>
+                                    <GoogleIcon />
+                                    Sign in
+                                </button>
                                 <Link
                                     href="/"
                                     onClick={() => setMobileOpen(false)}
@@ -206,7 +223,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
                             >
                                 <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-white dark:bg-gray-800 shadow-card">
                                     <span className="material-symbols-outlined">
-                                        upcoming
+                                        event_upcoming
                                     </span>
                                 </span>
                                 <span className="text-sm font-semibold tracking-[-0.04em] text-ink">
