@@ -140,35 +140,64 @@ export function EventCard({
                             : "border-hairline bg-surface text-ink hover:border-hairline-strong"
                     }`}
                 >
-                    {isEditing ? "Editing…" : "Edit"}
+                    {isEditing ? (
+                        "Editing…"
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined">
+                                edit
+                            </span>
+                            Edit
+                        </div>
+                    )}
                 </button>
                 <button
                     type="button"
                     onClick={stop(onCopy)}
                     className="rounded-pill border border-hairline bg-surface px-4 py-2 text-sm font-medium text-ink transition hover:border-hairline-strong"
                 >
-                    Copy link
+                    <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined">
+                            content_copy
+                        </span>
+                        Copy link
+                    </div>
                 </button>
                 <button
                     type="button"
                     onClick={stop(onCalendar)}
                     className="rounded-pill border border-hairline bg-surface px-4 py-2 text-sm font-medium text-ink transition hover:border-hairline-strong"
                 >
-                    Google Cal
+                    <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined">
+                            calendar_month
+                        </span>
+                        Google Cal
+                    </div>
                 </button>
                 <button
                     type="button"
                     onClick={stop(onIcs)}
                     className="rounded-pill border border-hairline bg-surface px-4 py-2 text-sm font-medium text-ink transition hover:border-hairline-strong"
                 >
-                    ICS
+                    <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined">
+                            download
+                        </span>
+                        ICS
+                    </div>
                 </button>
                 <button
                     type="button"
                     onClick={stop(onDelete)}
                     className="rounded-pill border border-error/30 bg-error-soft px-4 py-2 text-sm font-medium text-error-deep transition hover:border-error/50"
                 >
-                    Delete
+                    <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined">
+                            delete
+                        </span>
+                        Delete
+                    </div>
                 </button>
             </div>
         </article>

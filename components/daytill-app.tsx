@@ -842,7 +842,21 @@ export function DaytillApp() {
                                 onClick={() => void handleSaveEvent()}
                                 className="inline-flex h-12 items-center rounded-pill bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover"
                             >
-                                {editingId ? "Save changes" : "Add countdown"}
+                                {editingId ? (
+                                    <div className="flex items-center gap-2">
+                                        <span className="material-symbols-outlined">
+                                            save
+                                        </span>
+                                        Save changes
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <span className="material-symbols-outlined">
+                                            add
+                                        </span>
+                                        Add countdown
+                                    </div>
+                                )}
                             </button>
                             {editingId ? (
                                 <button
@@ -850,7 +864,12 @@ export function DaytillApp() {
                                     onClick={cancelEdit}
                                     className="inline-flex h-12 items-center rounded-pill border border-hairline bg-surface px-5 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
                                 >
-                                    Cancel
+                                    <div className="flex items-center gap-2">
+                                        <span className="material-symbols-outlined">
+                                            close
+                                        </span>
+                                        Cancel
+                                    </div>
                                 </button>
                             ) : null}
                         </div>
