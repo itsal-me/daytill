@@ -2,17 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
 import { type User } from "@supabase/supabase-js";
-import {
-    ReactNode,
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-    type KeyboardEvent,
-} from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
+
+const THEME_KEY = "daytill.theme";
 
 const navLinks = [
     { href: "/", label: "App" },
@@ -35,36 +29,22 @@ const footerLinks = {
     ],
 } as const;
 
-const THEME_KEY = "daytill.theme";
-
-import { DaytillEvent, loadEvents, sortEvents } from "@/lib/daytill";
-
-import {
-    eventToRow,
-    getSupabaseBrowserClient,
-    rowToEvent,
-    type EventRow,
-} from "@/lib/supabase";
-
 type Toast = { id: string; message: string; type: "info" | "error" };
-const STORAGE_KEY = "daytill.events.v1";
 
 export function SiteShell({ children }: { children: ReactNode }) {
     const supabase = getSupabaseBrowserClient();
-
     const pathname = usePathname();
+
     const [mobileOpen, setMobileOpen] = useState(false);
     const [theme, setTheme] = useState<"light" | "dark">("light");
     const [user, setUser] = useState<User | null>(null);
     const [authConfigured, setAuthConfigured] = useState(false);
     const [authBusy, setAuthBusy] = useState(false);
-    const [eventsLoaded, setEventsLoaded] = useState(false);
     const [toasts, setToasts] = useState<Toast[]>([]);
-    const [events, setEvents] = useState<DaytillEvent[]>([]);
 
     // ─── Toast helpers ────────────────────────────────────────────────────────
 
-    const toast = useCallback(
+    const addToast = useCallback(
         (message: string, type: Toast["type"] = "info") => {
             const id = crypto.randomUUID();
             setToasts((prev) => [...prev, { id, message, type }]);
@@ -76,104 +56,57 @@ export function SiteShell({ children }: { children: ReactNode }) {
         [],
     );
 
-    const dismissToast = useCallback((id: string) => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
+    // ─── Theme boot (sync with inline script in layout) ───────────────────────
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const stored = window.localStorage.getItem(THEME_KEY);
+        const resolved =
+            stored === "dark" || stored === "light"
+                ? stored
+                : window.matchMedia("(prefers-color-scheme: dark)").matches
+                  ? "dark"
+                  : "light";
+        setTheme(resolved);
+        // Ensure DOM is in sync (in case layout script didn't run)
+        document.documentElement.classList.toggle("dark", resolved === "dark");
+        document.documentElement.style.colorScheme = resolved;
     }, []);
 
-    // ─── Auth + cloud sync ────────────────────────────────────────────────────
+    // ─── Auth ─────────────────────────────────────────────────────────────────
 
     useEffect(() => {
         setAuthConfigured(Boolean(supabase));
-        if (!supabase) {
-            setEvents(loadEvents(STORAGE_KEY));
-            setEventsLoaded(true);
-            return;
-        }
+        const client = supabase;
+        if (!client) return;
 
+        // Non-null after the guard above; captured in closures below
+        const c = client;
         let mounted = true;
-
-        async function loadCloudEvents(userId: string) {
-            const { data, error } = await supabase!
-                .from("events")
-                .select("*")
-                .eq("user_id", userId);
-
-            if (!mounted) return;
-            if (error) {
-                toast(
-                    "Could not load cloud events — showing local data.",
-                    "error",
-                );
-                setEvents(loadEvents(STORAGE_KEY));
-                setEventsLoaded(true);
-                return;
-            }
-
-            const mapped = ((data ?? []) as EventRow[]).map(rowToEvent);
-            setEvents(sortEvents(mapped, Date.now()));
-            setEventsLoaded(true);
-        }
 
         async function init() {
             const {
                 data: { session },
-            } = await supabase!.auth.getSession();
-            const sessionUser = session?.user ?? null;
+            } = await c.auth.getSession();
             if (!mounted) return;
-            setUser(sessionUser);
-            if (sessionUser) {
-                await loadCloudEvents(sessionUser.id);
-            } else {
-                setEvents(loadEvents(STORAGE_KEY));
-                setEventsLoaded(true);
-            }
+            setUser(session?.user ?? null);
         }
 
         void init();
 
         const {
             data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
-            const sessionUser = session?.user ?? null;
-            setUser(sessionUser);
-            if (sessionUser) {
-                void loadCloudEvents(sessionUser.id);
-            } else {
-                setEvents(loadEvents(STORAGE_KEY));
-                setEventsLoaded(true);
-            }
+        } = c.auth.onAuthStateChange((_event, session) => {
+            setUser(session?.user ?? null);
         });
 
         return () => {
             mounted = false;
             subscription.unsubscribe();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [supabase]);
 
-    async function signInWithGoogle() {
-        if (!supabase) {
-            toast("Supabase not configured.", "error");
-            return;
-        }
-        setAuthBusy(true);
-        const { error } = await supabase.auth.signInWithOAuth({
-            provider: "google",
-            options: { redirectTo: window.location.origin },
-        });
-        if (error) {
-            toast(`Sign-in failed: ${error.message}`, "error");
-            setAuthBusy(false);
-        }
-    }
-
-    async function signOutUser() {
-        if (!supabase) return;
-        setAuthBusy(true);
-        const { error } = await supabase.auth.signOut();
-        setAuthBusy(false);
-        if (error) toast(`Sign out failed: ${error.message}`, "error");
-    }
+    // ─── Handlers ─────────────────────────────────────────────────────────────
 
     function handleThemeToggle() {
         const next = theme === "dark" ? "light" : "dark";
@@ -183,17 +116,90 @@ export function SiteShell({ children }: { children: ReactNode }) {
         window.localStorage.setItem(THEME_KEY, next);
     }
 
+    async function signInWithGoogle() {
+        if (!supabase) {
+            addToast("Supabase not configured.", "error");
+            return;
+        }
+        setAuthBusy(true);
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: { redirectTo: window.location.origin },
+        });
+        if (error) {
+            addToast(`Sign-in failed: ${error.message}`, "error");
+            setAuthBusy(false);
+        }
+    }
+
+    async function signOutUser() {
+        if (!supabase) return;
+        setAuthBusy(true);
+        const { error } = await supabase.auth.signOut();
+        setAuthBusy(false);
+        if (error) addToast(`Sign out failed: ${error.message}`, "error");
+    }
+
+    // ─── Render ───────────────────────────────────────────────────────────────
+
     return (
         <>
-            <header className="sticky top-0 h-16 z-40 border-b border-hairline/80 bg-page/85 backdrop-blur-xl">
-                <div className="mx-auto flex w-full max-w-350 items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+            {/* Toast stack */}
+            <div
+                aria-live="polite"
+                className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2 pointer-events-none"
+            >
+                {toasts.map((t) => (
+                    <div
+                        key={t.id}
+                        className={`pointer-events-auto flex items-start gap-3 rounded-xl border px-4 py-3 text-sm font-medium shadow-[0_8px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm ${
+                            t.type === "error"
+                                ? "border-error/30 bg-error-soft text-error-deep"
+                                : "border-hairline bg-surface/95 text-ink"
+                        }`}
+                    >
+                        <span className="max-w-xs">{t.message}</span>
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setToasts((prev) =>
+                                    prev.filter((x) => x.id !== t.id),
+                                )
+                            }
+                            aria-label="Dismiss"
+                            className="mt-0.5 shrink-0 text-mute hover:text-ink"
+                        >
+                            <svg
+                                viewBox="0 0 12 12"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                className="h-3 w-3"
+                            >
+                                <path
+                                    d="M1 1l10 10M11 1L1 11"
+                                    strokeLinecap="round"
+                                />
+                            </svg>
+                        </button>
+                    </div>
+                ))}
+            </div>
+
+            <header className="sticky top-0 z-40 h-16 border-b border-hairline/80 bg-page/85 backdrop-blur-xl">
+                <div className="mx-auto flex h-full w-full max-w-350 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+                    {/* Logo */}
                     <Link
                         href="/"
-                        className="flex items-center gap-2.5 shrink-0"
+                        className="flex shrink-0 items-center gap-2.5"
                         onClick={() => setMobileOpen(false)}
                     >
-                        <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-white dark:bg-gray-800 shadow-card">
-                            <span className="material-symbols-outlined">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-ink text-on-primary shadow-card">
+                            <span
+                                className="material-symbols-outlined"
+                                style={{ fontSize: "18px" }}
+                                aria-hidden="true"
+                            >
                                 event_upcoming
                             </span>
                         </span>
@@ -202,6 +208,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
                         </span>
                     </Link>
 
+                    {/* Desktop nav */}
                     <nav
                         aria-label="Site"
                         className="hidden items-center gap-1 md:flex"
@@ -221,21 +228,36 @@ export function SiteShell({ children }: { children: ReactNode }) {
                         ))}
                     </nav>
 
+                    {/* Desktop CTAs */}
                     <div className="hidden items-center gap-2 md:flex">
-                        {/* <Link
-                            href="/"
-                            className="inline-flex h-7 items-center rounded-md border border-hairline bg-surface px-3 text-[13px] font-medium text-ink transition hover:border-hairline-strong"
+                        {/* Theme toggle */}
+                        <button
+                            type="button"
+                            onClick={handleThemeToggle}
+                            title={
+                                theme === "dark"
+                                    ? "Switch to light mode"
+                                    : "Switch to dark mode"
+                            }
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-hairline bg-surface text-body transition hover:border-hairline-strong hover:text-ink"
                         >
-                            Log in
-                        </Link> */}
+                            <span
+                                className="material-symbols-outlined"
+                                style={{ fontSize: "16px" }}
+                                aria-hidden="true"
+                            >
+                                {theme === "dark" ? "light_mode" : "dark_mode"}
+                            </span>
+                        </button>
 
+                        {/* Auth */}
                         {authConfigured ? (
                             user ? (
                                 <button
                                     type="button"
                                     onClick={signOutUser}
                                     disabled={authBusy}
-                                    className="inline-flex h-9 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="inline-flex h-7 items-center rounded-md border border-hairline bg-surface px-3 text-[13px] font-medium text-ink transition hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     Sign out
                                 </button>
@@ -244,7 +266,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
                                     type="button"
                                     onClick={signInWithGoogle}
                                     disabled={authBusy}
-                                    className="inline-flex h-9 items-center gap-2 rounded-pill border border-hairline bg-surface px-4 text-sm font-semibold text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="inline-flex h-7 items-center gap-1.5 rounded-md border border-hairline bg-surface px-3 text-[13px] font-medium text-ink transition hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     <GoogleIcon />
                                     Sign in
@@ -252,34 +274,35 @@ export function SiteShell({ children }: { children: ReactNode }) {
                             )
                         ) : null}
 
+                        {/* Start free */}
                         <Link
                             href="/#event-form"
                             className="inline-flex h-7 items-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground transition hover:bg-primary-hover"
                         >
                             Start free
                         </Link>
+                    </div>
+
+                    {/* Mobile right cluster */}
+                    <div className="flex items-center gap-2 md:hidden">
                         <button
                             type="button"
                             onClick={handleThemeToggle}
-                            className="inline-flex h-9 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-hairline bg-surface text-body"
                         >
-                            {theme === "dark" ? (
-                                <span className="material-symbols-outlined">
-                                    light_mode
-                                </span>
-                            ) : (
-                                <span className="material-symbols-outlined">
-                                    dark_mode
-                                </span>
-                            )}
+                            <span
+                                className="material-symbols-outlined"
+                                style={{ fontSize: "16px" }}
+                                aria-hidden="true"
+                            >
+                                {theme === "dark" ? "light_mode" : "dark_mode"}
+                            </span>
                         </button>
-                    </div>
-                    <div className="flex items-center gap-2 md:hidden">
                         <button
                             type="button"
                             aria-label={mobileOpen ? "Close menu" : "Open menu"}
                             onClick={() => setMobileOpen((v) => !v)}
-                            className="flex h-8 w-8 items-center justify-center rounded-md border border-hairline text-ink transition hover:border-hairline-strong md:hidden"
+                            className="flex h-8 w-8 items-center justify-center rounded-md border border-hairline text-ink"
                         >
                             {mobileOpen ? (
                                 <svg
@@ -311,24 +334,10 @@ export function SiteShell({ children }: { children: ReactNode }) {
                                 </svg>
                             )}
                         </button>
-                        <button
-                            type="button"
-                            onClick={handleThemeToggle}
-                            className="inline-flex h-9 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
-                        >
-                            {theme === "dark" ? (
-                                <span className="material-symbols-outlined">
-                                    light_mode
-                                </span>
-                            ) : (
-                                <span className="material-symbols-outlined">
-                                    dark_mode
-                                </span>
-                            )}
-                        </button>
                     </div>
                 </div>
 
+                {/* Mobile menu */}
                 {mobileOpen && (
                     <div className="border-t border-hairline/60 bg-page/95 backdrop-blur-xl md:hidden">
                         <nav className="mx-auto flex w-full max-w-350 flex-col gap-1 px-4 py-4 sm:px-6">
@@ -347,15 +356,36 @@ export function SiteShell({ children }: { children: ReactNode }) {
                                 </Link>
                             ))}
                             <div className="mt-3 flex gap-2 border-t border-hairline/60 pt-3">
-                                <button
-                                    type="button"
-                                    className="inline-flex flex-1 h-9 items-center justify-center gap-2 rounded-pill border border-hairline bg-surface px-4 text-sm font-semibold text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    <GoogleIcon />
-                                    Sign in
-                                </button>
+                                {authConfigured ? (
+                                    user ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setMobileOpen(false);
+                                                void signOutUser();
+                                            }}
+                                            disabled={authBusy}
+                                            className="inline-flex h-9 flex-1 items-center justify-center rounded-md border border-hairline bg-surface text-sm font-medium text-ink disabled:opacity-60"
+                                        >
+                                            Sign out
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setMobileOpen(false);
+                                                void signInWithGoogle();
+                                            }}
+                                            disabled={authBusy}
+                                            className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border border-hairline bg-surface text-sm font-medium text-ink disabled:opacity-60"
+                                        >
+                                            <GoogleIcon />
+                                            Sign in
+                                        </button>
+                                    )
+                                ) : null}
                                 <Link
-                                    href="/"
+                                    href="/#event-form"
                                     onClick={() => setMobileOpen(false)}
                                     className="inline-flex h-9 flex-1 items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground"
                                 >
@@ -377,8 +407,12 @@ export function SiteShell({ children }: { children: ReactNode }) {
                                 href="/"
                                 className="flex items-center gap-2.5"
                             >
-                                <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-white dark:bg-gray-800 shadow-card">
-                                    <span className="material-symbols-outlined">
+                                <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-ink text-on-primary">
+                                    <span
+                                        className="material-symbols-outlined"
+                                        style={{ fontSize: "18px" }}
+                                        aria-hidden="true"
+                                    >
                                         event_upcoming
                                     </span>
                                 </span>
@@ -427,8 +461,8 @@ export function SiteShell({ children }: { children: ReactNode }) {
 
 function GoogleIcon() {
     return (
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)]">
-            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5">
+        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-surface shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)]">
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3 w-3">
                 <path
                     fill="#4285F4"
                     d="M12 10.2v3.9h5.5c-.2 1.2-1.4 3.5-5.5 3.5-3.3 0-6-2.8-6-6.2S8.7 5.2 12 5.2c1.9 0 3.2.8 4 1.5l2.7-2.6C16.1 2.5 14.2 1.7 12 1.7 6.8 1.7 2.6 5.9 2.6 11.1S6.8 20.5 12 20.5c6.7 0 8.9-4.7 8.9-7.1 0-.5-.1-.9-.1-1.2H12Z"
