@@ -25,9 +25,20 @@ const footerLinks = {
     ],
 } as const;
 
+const THEME_KEY = "daytill.theme";
+
 export function SiteShell({ children }: { children: ReactNode }) {
     const pathname = usePathname();
     const [mobileOpen, setMobileOpen] = useState(false);
+    const [theme, setTheme] = useState<"light" | "dark">("light");
+
+    function handleThemeToggle() {
+        const next = theme === "dark" ? "light" : "dark";
+        setTheme(next);
+        document.documentElement.classList.toggle("dark", next === "dark");
+        document.documentElement.style.colorScheme = next;
+        window.localStorage.setItem(THEME_KEY, next);
+    }
 
     return (
         <>
@@ -90,6 +101,21 @@ export function SiteShell({ children }: { children: ReactNode }) {
                         >
                             Start free
                         </Link>
+                        <button
+                            type="button"
+                            onClick={handleThemeToggle}
+                            className="inline-flex h-9 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
+                        >
+                            {theme === "dark" ? (
+                                <span className="material-symbols-outlined">
+                                    light_mode
+                                </span>
+                            ) : (
+                                <span className="material-symbols-outlined">
+                                    dark_mode
+                                </span>
+                            )}
+                        </button>
                     </div>
 
                     <button
@@ -178,13 +204,10 @@ export function SiteShell({ children }: { children: ReactNode }) {
                                 href="/"
                                 className="flex items-center gap-2.5"
                             >
-                                <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-primary">
-                                    <img
-                                        src="/daytill-mark.svg"
-                                        alt=""
-                                        aria-hidden="true"
-                                        className="h-8 w-8 rounded-[10px]"
-                                    />
+                                <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-white dark:bg-gray-800 shadow-card">
+                                    <span className="material-symbols-outlined">
+                                        upcoming
+                                    </span>
                                 </span>
                                 <span className="text-sm font-semibold tracking-[-0.04em] text-ink">
                                     Daytill

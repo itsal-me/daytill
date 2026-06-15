@@ -361,13 +361,13 @@ export function DaytillApp() {
         if (error) toast(`Sign out failed: ${error.message}`, "error");
     }
 
-    function handleThemeToggle() {
-        const next = theme === "dark" ? "light" : "dark";
-        setTheme(next);
-        document.documentElement.classList.toggle("dark", next === "dark");
-        document.documentElement.style.colorScheme = next;
-        window.localStorage.setItem(THEME_KEY, next);
-    }
+    // function handleThemeToggle() {
+    //     const next = theme === "dark" ? "light" : "dark";
+    //     setTheme(next);
+    //     document.documentElement.classList.toggle("dark", next === "dark");
+    //     document.documentElement.style.colorScheme = next;
+    //     window.localStorage.setItem(THEME_KEY, next);
+    // }
 
     async function enableNotifications() {
         if (!("Notification" in window)) {
@@ -590,7 +590,7 @@ export function DaytillApp() {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
-                            <button
+                            {/* <button
                                 type="button"
                                 onClick={handleThemeToggle}
                                 className="inline-flex h-9 items-center rounded-pill border border-hairline bg-surface px-4 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
@@ -604,7 +604,7 @@ export function DaytillApp() {
                                         dark_mode
                                     </span>
                                 )}
-                            </button>
+                            </button> */}
                             <button
                                 type="button"
                                 onClick={enableNotifications}
@@ -893,7 +893,7 @@ export function DaytillApp() {
                         </div>
 
                         {filteredEvents.length === 0 ? (
-                            <div className="rounded-3xl border border-dashed border-hairline bg-canvas-soft-2 p-8 text-center">
+                            <div className="rounded-3xl border border-dashed border-hairline bg-canvas-soft-2 p-8 text-center min-h-80 flex flex-col items-center justify-center gap-2">
                                 {events.length === 0 ? (
                                     <>
                                         <p className="text-base font-medium text-ink">
