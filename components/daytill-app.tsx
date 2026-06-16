@@ -70,6 +70,73 @@ const THEMES: { id: Theme; label: string; swatch: string }[] = [
     { id: "midnight", label: "Midnight", swatch: "bg-[#6366f1]" },
 ];
 
+type CategoryConfig = {
+    icon: string;
+    hint: string;
+    prompt: string;
+    placeholder: string;
+    showTime: boolean;
+    defaultRecurringYearly: boolean;
+    defaultReminders: { r7: boolean; r1: boolean; r0: boolean };
+};
+
+const CATEGORY_CONFIG: Record<EventCategory, CategoryConfig> = {
+    Study: {
+        icon: "🎓",
+        hint: "Exams, tests, IELTS, SAT…",
+        prompt: "What are you studying for?",
+        placeholder: "e.g. Final Exam, IELTS, Thesis…",
+        showTime: true,
+        defaultRecurringYearly: false,
+        defaultReminders: { r7: true, r1: true, r0: true },
+    },
+    Birthday: {
+        icon: "🎂",
+        hint: "Repeats every year — auto set",
+        prompt: "Whose birthday is it?",
+        placeholder: "e.g. Mom's Birthday, Alex…",
+        showTime: false,
+        defaultRecurringYearly: true,
+        defaultReminders: { r7: true, r1: false, r0: true },
+    },
+    Trip: {
+        icon: "✈️",
+        hint: "Flights, vacations, adventures",
+        prompt: "Where are you headed?",
+        placeholder: "e.g. Japan Trip, Bali Vacation…",
+        showTime: false,
+        defaultRecurringYearly: false,
+        defaultReminders: { r7: true, r1: true, r0: false },
+    },
+    Anniversary: {
+        icon: "💍",
+        hint: "Repeats every year — auto set",
+        prompt: "What's the anniversary?",
+        placeholder: "e.g. Wedding Anniversary…",
+        showTime: false,
+        defaultRecurringYearly: true,
+        defaultReminders: { r7: true, r1: false, r0: true },
+    },
+    Work: {
+        icon: "💼",
+        hint: "Launches, interviews, sprints",
+        prompt: "What's the deadline or event?",
+        placeholder: "e.g. Product Launch, Sprint End…",
+        showTime: true,
+        defaultRecurringYearly: false,
+        defaultReminders: { r7: false, r1: true, r0: true },
+    },
+    Personal: {
+        icon: "🎉",
+        hint: "Any moment that matters",
+        prompt: "What's the moment?",
+        placeholder: "e.g. Graduation, New Year's Eve…",
+        showTime: false,
+        defaultRecurringYearly: false,
+        defaultReminders: { r7: true, r1: false, r0: true },
+    },
+};
+
 const DEFAULT_DRAFT: DraftState = {
     title: "",
     date: "",
@@ -168,6 +235,7 @@ export function DaytillApp() {
     const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
     const [isBackingUp, setIsBackingUp] = useState(false);
     const [isRestoring, setIsRestoring] = useState(false);
+    const [creationStep, setCreationStep] = useState<"pick" | "detail">("pick");
 
     const formRef = useRef<HTMLDivElement>(null);
 
@@ -455,7 +523,6 @@ export function DaytillApp() {
         setDraft((prev) => ({
             ...prev,
             category: newCat,
-            // Auto-enable repeat yearly for events that recur by nature
             recurringYearly:
                 newCat === "Birthday" || newCat === "Anniversary"
                     ? true
@@ -463,15 +530,30 @@ export function DaytillApp() {
         }));
     }
 
+    function handlePickCategory(cat: EventCategory) {
+        const cfg = CATEGORY_CONFIG[cat];
+        setDraft({
+            ...DEFAULT_DRAFT,
+            category: cat,
+            recurringYearly: cfg.defaultRecurringYearly,
+            reminder7Days: cfg.defaultReminders.r7,
+            reminder1Day: cfg.defaultReminders.r1,
+            reminderDayOf: cfg.defaultReminders.r0,
+        });
+        setCreationStep("detail");
+    }
+
     function startEdit(event: DaytillEvent) {
         setEditingId(event.id);
         setDraft(eventToDraft(event));
+        setCreationStep("detail");
         formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     function cancelEdit() {
         setEditingId(null);
         setDraft(DEFAULT_DRAFT);
+        setCreationStep("pick");
     }
 
     function handleAppearanceChange(theme: Theme) {
@@ -588,6 +670,7 @@ export function DaytillApp() {
             );
             setEditingId(null);
             setDraft(DEFAULT_DRAFT);
+            setCreationStep("pick");
             toast(`Updated "${updated.title}".`);
             return;
         }
@@ -616,13 +699,15 @@ export function DaytillApp() {
                     "error",
                 );
                 setEvents((prev) => [...prev, event]);
-                setDraft({ ...DEFAULT_DRAFT, category: draft.category });
+                setDraft(DEFAULT_DRAFT);
+                setCreationStep("pick");
                 return;
             }
         }
 
         setEvents((prev) => [...prev, event]);
-        setDraft({ ...DEFAULT_DRAFT, category: draft.category });
+        setDraft(DEFAULT_DRAFT);
+        setCreationStep("pick");
         toast(`Added "${event.title}".`);
     }
 
@@ -908,177 +993,259 @@ export function DaytillApp() {
                     id="event-form"
                     className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr] scroll-mt-20"
                 >
-                    {/* ── Event form ── */}
+                    {/* ── Creation wizard / Edit form ── */}
                     <section className="glass-panel rounded-card p-5 shadow-card lg:p-6">
-                        <div className="mb-6">
-                            <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
-                                {editingId ? "Edit countdown" : "New countdown"}
-                            </p>
-                            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-ink">
-                                {editingId
-                                    ? "Update your countdown."
-                                    : "What are you counting down to?"}
-                            </h2>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <label className="space-y-2 md:col-span-2">
-                                <span className="text-sm font-medium text-body">
-                                    What&apos;s the moment?
-                                </span>
-                                <input
-                                    value={draft.title}
-                                    onChange={(e) =>
-                                        updateDraft("title", e.target.value)
-                                    }
-                                    onKeyDown={(
-                                        e: KeyboardEvent<HTMLInputElement>,
-                                    ) => {
-                                        if (e.key === "Enter")
-                                            void handleSaveEvent();
-                                    }}
-                                    placeholder="Finals, Mom's birthday, Japan trip…"
-                                    className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition placeholder:text-mute focus:border-link"
-                                />
-                            </label>
-
-                            <label className="space-y-2">
-                                <span className="text-sm font-medium text-body">
-                                    Date
-                                </span>
-                                <input
-                                    type="date"
-                                    value={draft.date}
-                                    onChange={(e) =>
-                                        updateDraft("date", e.target.value)
-                                    }
-                                    className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
-                                />
-                            </label>
-
-                            <label className="space-y-2">
-                                <span className="text-sm font-medium text-body">
-                                    Time{" "}
-                                    <span className="ml-1 font-normal text-mute">
-                                        (optional)
-                                    </span>
-                                </span>
-                                <input
-                                    type="time"
-                                    value={draft.time}
-                                    onChange={(e) =>
-                                        updateDraft("time", e.target.value)
-                                    }
-                                    className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
-                                />
-                            </label>
-
-                            <label className="space-y-2">
-                                <span className="text-sm font-medium text-body">
-                                    Category
-                                </span>
-                                <select
-                                    value={draft.category}
-                                    onChange={(e) =>
-                                        handleCategoryChange(
-                                            e.target.value as EventCategory,
-                                        )
-                                    }
-                                    className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
-                                >
-                                    {CATEGORY_OPTIONS.map((c) => (
-                                        <option key={c} value={c}>
-                                            {c}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-
-                            {/* Email reminder — Pro only */}
-                            <div className="space-y-2">
-                                <span className="flex items-center gap-2 text-sm font-medium text-body">
-                                    Email reminder <ProBadge />
-                                </span>
-                                {isPro ? (
-                                    <input
-                                        type="email"
-                                        value={draft.emailReminder}
-                                        onChange={(e) =>
-                                            updateDraft(
-                                                "emailReminder",
-                                                e.target.value,
-                                            )
-                                        }
-                                        placeholder="name@example.com"
-                                        className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition placeholder:text-mute focus:border-link"
-                                    />
-                                ) : (
-                                    <div className="flex h-12 items-center gap-2 rounded-[14px] border border-dashed border-hairline bg-canvas-soft-2 px-4">
-                                        <span className="text-sm text-mute">
-                                            Unlock with Pro
-                                        </span>
-                                        <Link
-                                            href="/pricing"
-                                            className="ml-auto text-xs font-medium text-link hover:underline"
-                                        >
-                                            Upgrade →
-                                        </Link>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="rounded-[18px] border border-hairline bg-canvas-soft-2 p-4 md:col-span-2">
-                                <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-                                    <CheckboxField
-                                        checked={draft.recurringYearly}
-                                        onChange={(v) =>
-                                            updateDraft("recurringYearly", v)
-                                        }
-                                        label="Repeat yearly"
-                                    />
-                                    <CheckboxField
-                                        checked={draft.reminder7Days}
-                                        onChange={(v) =>
-                                            updateDraft("reminder7Days", v)
-                                        }
-                                        label="7 days before"
-                                    />
-                                    <CheckboxField
-                                        checked={draft.reminder1Day}
-                                        onChange={(v) =>
-                                            updateDraft("reminder1Day", v)
-                                        }
-                                        label="1 day before"
-                                    />
-                                    <CheckboxField
-                                        checked={draft.reminderDayOf}
-                                        onChange={(v) =>
-                                            updateDraft("reminderDayOf", v)
-                                        }
-                                        label="On the day"
-                                    />
+                        {editingId ? (
+                            /* ─── Edit mode: full form ─── */
+                            <>
+                                <div className="mb-6">
+                                    <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
+                                        Edit countdown
+                                    </p>
+                                    <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-ink">
+                                        Update your countdown.
+                                    </h2>
                                 </div>
-                            </div>
-                        </div>
 
-                        <div className="mt-6 flex flex-wrap items-center gap-3">
-                            <button
-                                type="button"
-                                onClick={() => void handleSaveEvent()}
-                                className="inline-flex h-12 items-center rounded-pill bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover"
-                            >
-                                {editingId ? "Save changes" : "Add countdown"}
-                            </button>
-                            {editingId && (
-                                <button
-                                    type="button"
-                                    onClick={cancelEdit}
-                                    className="inline-flex h-12 items-center rounded-pill border border-hairline bg-surface px-5 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
-                                >
-                                    Cancel
-                                </button>
-                            )}
-                        </div>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <label className="space-y-2 md:col-span-2">
+                                        <span className="text-sm font-medium text-body">Title</span>
+                                        <input
+                                            value={draft.title}
+                                            onChange={(e) => updateDraft("title", e.target.value)}
+                                            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                                                if (e.key === "Enter") void handleSaveEvent();
+                                            }}
+                                            placeholder="What's the moment?"
+                                            className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition placeholder:text-mute focus:border-link"
+                                        />
+                                    </label>
+
+                                    <label className="space-y-2">
+                                        <span className="text-sm font-medium text-body">Date</span>
+                                        <input
+                                            type="date"
+                                            value={draft.date}
+                                            onChange={(e) => updateDraft("date", e.target.value)}
+                                            className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
+                                        />
+                                    </label>
+
+                                    <label className="space-y-2">
+                                        <span className="text-sm font-medium text-body">
+                                            Time{" "}
+                                            <span className="ml-1 font-normal text-mute">(optional)</span>
+                                        </span>
+                                        <input
+                                            type="time"
+                                            value={draft.time}
+                                            onChange={(e) => updateDraft("time", e.target.value)}
+                                            className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
+                                        />
+                                    </label>
+
+                                    <label className="space-y-2">
+                                        <span className="text-sm font-medium text-body">Category</span>
+                                        <select
+                                            value={draft.category}
+                                            onChange={(e) => handleCategoryChange(e.target.value as EventCategory)}
+                                            className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
+                                        >
+                                            {CATEGORY_OPTIONS.map((c) => (
+                                                <option key={c} value={c}>{c}</option>
+                                            ))}
+                                        </select>
+                                    </label>
+
+                                    <div className="space-y-2">
+                                        <span className="flex items-center gap-2 text-sm font-medium text-body">
+                                            Email reminder <ProBadge />
+                                        </span>
+                                        {isPro ? (
+                                            <input
+                                                type="email"
+                                                value={draft.emailReminder}
+                                                onChange={(e) => updateDraft("emailReminder", e.target.value)}
+                                                placeholder="name@example.com"
+                                                className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition placeholder:text-mute focus:border-link"
+                                            />
+                                        ) : (
+                                            <div className="flex h-12 items-center gap-2 rounded-[14px] border border-dashed border-hairline bg-canvas-soft-2 px-4">
+                                                <span className="text-sm text-mute">Unlock with Pro</span>
+                                                <Link href="/pricing" className="ml-auto text-xs font-medium text-link hover:underline">
+                                                    Upgrade →
+                                                </Link>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="rounded-[18px] border border-hairline bg-canvas-soft-2 p-4 md:col-span-2">
+                                        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                                            <CheckboxField checked={draft.recurringYearly} onChange={(v) => updateDraft("recurringYearly", v)} label="Repeat yearly" />
+                                            <CheckboxField checked={draft.reminder7Days} onChange={(v) => updateDraft("reminder7Days", v)} label="7 days before" />
+                                            <CheckboxField checked={draft.reminder1Day} onChange={(v) => updateDraft("reminder1Day", v)} label="1 day before" />
+                                            <CheckboxField checked={draft.reminderDayOf} onChange={(v) => updateDraft("reminderDayOf", v)} label="On the day" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 flex flex-wrap items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleSaveEvent()}
+                                        className="inline-flex h-12 items-center rounded-pill bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover"
+                                    >
+                                        Save changes
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={cancelEdit}
+                                        className="inline-flex h-12 items-center rounded-pill border border-hairline bg-surface px-5 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:border-hairline-strong"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </>
+                        ) : creationStep === "pick" ? (
+                            /* ─── Step 1: Pick a category ─── */
+                            <>
+                                <div className="mb-6">
+                                    <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
+                                        New countdown
+                                    </p>
+                                    <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-ink">
+                                        What are you counting down to?
+                                    </h2>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                    {CATEGORY_OPTIONS.map((cat) => {
+                                        const cfg = CATEGORY_CONFIG[cat];
+                                        return (
+                                            <button
+                                                key={cat}
+                                                type="button"
+                                                onClick={() => handlePickCategory(cat)}
+                                                className="flex flex-col items-start gap-3 rounded-2xl border border-hairline bg-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_4px_20px_rgba(0,0,0,0.07)] active:translate-y-0"
+                                            >
+                                                <span className="text-2xl" aria-hidden="true">{cfg.icon}</span>
+                                                <div>
+                                                    <p className="text-sm font-semibold text-ink">{cat}</p>
+                                                    <p className="mt-0.5 text-[11px] leading-relaxed text-mute">{cfg.hint}</p>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        ) : (
+                            /* ─── Step 2: Fill in the details ─── */
+                            (() => {
+                                const cfg = CATEGORY_CONFIG[draft.category];
+                                return (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCreationStep("pick")}
+                                            className="mb-5 flex items-center gap-1.5 text-sm text-mute transition hover:text-ink"
+                                        >
+                                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>
+                                                arrow_back
+                                            </span>
+                                            Back
+                                        </button>
+
+                                        <div className="mb-6">
+                                            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-hairline bg-surface px-3 py-1.5 text-xs font-medium text-body">
+                                                <span aria-hidden="true">{cfg.icon}</span>
+                                                {draft.category}
+                                            </div>
+                                            <h2 className="text-2xl font-semibold tracking-[-0.04em] text-ink">
+                                                {cfg.prompt}
+                                            </h2>
+                                        </div>
+
+                                        <div className="grid gap-4">
+                                            <input
+                                                autoFocus
+                                                value={draft.title}
+                                                onChange={(e) => updateDraft("title", e.target.value)}
+                                                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                                                    if (e.key === "Enter") void handleSaveEvent();
+                                                }}
+                                                placeholder={cfg.placeholder}
+                                                className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition placeholder:text-mute focus:border-link"
+                                            />
+
+                                            <div className={`grid gap-4${cfg.showTime ? " sm:grid-cols-2" : ""}`}>
+                                                <label className="space-y-2">
+                                                    <span className="text-sm font-medium text-body">When?</span>
+                                                    <input
+                                                        type="date"
+                                                        value={draft.date}
+                                                        onChange={(e) => updateDraft("date", e.target.value)}
+                                                        className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
+                                                    />
+                                                </label>
+                                                {cfg.showTime && (
+                                                    <label className="space-y-2">
+                                                        <span className="text-sm font-medium text-body">
+                                                            Time{" "}
+                                                            <span className="ml-1 font-normal text-mute">(optional)</span>
+                                                        </span>
+                                                        <input
+                                                            type="time"
+                                                            value={draft.time}
+                                                            onChange={(e) => updateDraft("time", e.target.value)}
+                                                            className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition focus:border-link"
+                                                        />
+                                                    </label>
+                                                )}
+                                            </div>
+
+                                            <div className="rounded-[18px] border border-hairline bg-canvas-soft-2 p-4">
+                                                <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-mute">
+                                                    Reminders
+                                                </p>
+                                                <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                                                    <CheckboxField checked={draft.recurringYearly} onChange={(v) => updateDraft("recurringYearly", v)} label="Repeat yearly" />
+                                                    <CheckboxField checked={draft.reminder7Days} onChange={(v) => updateDraft("reminder7Days", v)} label="7 days before" />
+                                                    <CheckboxField checked={draft.reminder1Day} onChange={(v) => updateDraft("reminder1Day", v)} label="1 day before" />
+                                                    <CheckboxField checked={draft.reminderDayOf} onChange={(v) => updateDraft("reminderDayOf", v)} label="On the day" />
+                                                </div>
+                                            </div>
+
+                                            {isPro && (
+                                                <label className="space-y-2">
+                                                    <span className="flex items-center gap-2 text-sm font-medium text-body">
+                                                        Email reminder <ProBadge />
+                                                    </span>
+                                                    <input
+                                                        type="email"
+                                                        value={draft.emailReminder}
+                                                        onChange={(e) => updateDraft("emailReminder", e.target.value)}
+                                                        placeholder="name@example.com"
+                                                        className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition placeholder:text-mute focus:border-link"
+                                                    />
+                                                </label>
+                                            )}
+                                        </div>
+
+                                        <div className="mt-6">
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleSaveEvent()}
+                                                className="inline-flex h-12 items-center gap-2 rounded-pill bg-primary px-6 text-sm font-semibold text-primary-foreground transition hover:-translate-y-0.5 hover:bg-primary-hover"
+                                            >
+                                                Add countdown
+                                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                                                    arrow_forward
+                                                </span>
+                                            </button>
+                                        </div>
+                                    </>
+                                );
+                            })()
+                        )}
                     </section>
 
                     {/* ── Dashboard ── */}
@@ -1099,22 +1266,25 @@ export function DaytillApp() {
 
                         {/* Category filter */}
                         <div className="mb-4 flex flex-wrap gap-1.5">
-                            {(["All", ...CATEGORY_OPTIONS] as const).map(
-                                (c) => (
-                                    <button
-                                        key={c}
-                                        type="button"
-                                        onClick={() => setFilterCategory(c)}
-                                        className={`rounded-full px-3 py-1 text-[12px] font-medium transition ${
-                                            filterCategory === c
-                                                ? "bg-ink text-primary-foreground"
-                                                : "border border-hairline bg-surface text-body hover:border-hairline-strong hover:text-ink"
-                                        }`}
-                                    >
-                                        {c}
-                                    </button>
-                                ),
-                            )}
+                            {(["All", ...CATEGORY_OPTIONS] as const).map((c) => (
+                                <button
+                                    key={c}
+                                    type="button"
+                                    onClick={() => setFilterCategory(c)}
+                                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition ${
+                                        filterCategory === c
+                                            ? "bg-ink text-primary-foreground"
+                                            : "border border-hairline bg-surface text-body hover:border-hairline-strong hover:text-ink"
+                                    }`}
+                                >
+                                    {c !== "All" && (
+                                        <span aria-hidden="true" className="text-[11px]">
+                                            {CATEGORY_CONFIG[c].icon}
+                                        </span>
+                                    )}
+                                    {c}
+                                </button>
+                            ))}
                         </div>
 
                         {filteredEvents.length === 0 ? (
