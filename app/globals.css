@@ -89,19 +89,60 @@
 
 html {
     background: var(--daytill-page);
-    /* Theme tints — overridden by .theme-* classes on <html> */
+    /* Background tint gradient defaults */
     --tint-a: rgb(0 112 243 / 0.08);
     --tint-b: transparent;
     --tint-pos-a: top;
     --tint-pos-b: bottom;
+    /* Mesh orb color defaults */
+    --orb-a: rgb(0 112 243 / 0.55);
+    --orb-b: rgb(255 0 128 / 0.5);
 }
 
-/* Pro background themes — set on <html>, override the tint vars */
-html.theme-rose    { --tint-a: rgb(251 113 133 / 0.13); --tint-b: rgb(244 63 94 / 0.07);   --tint-pos-a: top left;    --tint-pos-b: bottom right; }
-html.theme-ocean   { --tint-a: rgb(6 182 212 / 0.15);   --tint-b: rgb(14 165 233 / 0.08);  --tint-pos-a: top;         --tint-pos-b: bottom right; }
-html.theme-forest  { --tint-a: rgb(34 197 94 / 0.12);   --tint-b: rgb(16 185 129 / 0.07);  --tint-pos-a: top left;    --tint-pos-b: bottom right; }
-html.theme-violet  { --tint-a: rgb(139 92 246 / 0.15);  --tint-b: rgb(168 85 247 / 0.07);  --tint-pos-a: top;         --tint-pos-b: bottom right; }
-html.theme-midnight{ --tint-a: rgb(99 102 241 / 0.18);  --tint-b: rgb(139 92 246 / 0.10);  --tint-pos-a: top;         --tint-pos-b: bottom;       }
+/* ── Pro themes — override tints, accent, primary button, and mesh orbs ──── */
+
+html.theme-rose {
+    --tint-a: rgb(251 113 133 / 0.15); --tint-b: rgb(244 63 94 / 0.08);
+    --tint-pos-a: top left; --tint-pos-b: bottom right;
+    --daytill-link: #e11d48; --daytill-primary: #e11d48;
+    --daytill-primary-hover: #be123c; --daytill-primary-foreground: #ffffff;
+    --orb-a: rgb(251 113 133 / 0.55); --orb-b: rgb(244 63 94 / 0.45);
+}
+html.theme-ocean {
+    --tint-a: rgb(6 182 212 / 0.15); --tint-b: rgb(14 165 233 / 0.09);
+    --tint-pos-a: top; --tint-pos-b: bottom right;
+    --daytill-link: #0891b2; --daytill-primary: #0891b2;
+    --daytill-primary-hover: #0e7490; --daytill-primary-foreground: #ffffff;
+    --orb-a: rgb(6 182 212 / 0.55); --orb-b: rgb(14 165 233 / 0.45);
+}
+html.theme-forest {
+    --tint-a: rgb(34 197 94 / 0.13); --tint-b: rgb(16 185 129 / 0.08);
+    --tint-pos-a: top left; --tint-pos-b: bottom right;
+    --daytill-link: #16a34a; --daytill-primary: #16a34a;
+    --daytill-primary-hover: #15803d; --daytill-primary-foreground: #ffffff;
+    --orb-a: rgb(34 197 94 / 0.55); --orb-b: rgb(16 185 129 / 0.45);
+}
+html.theme-violet {
+    --tint-a: rgb(139 92 246 / 0.15); --tint-b: rgb(168 85 247 / 0.08);
+    --tint-pos-a: top; --tint-pos-b: bottom right;
+    --daytill-link: #7c3aed; --daytill-primary: #7c3aed;
+    --daytill-primary-hover: #6d28d9; --daytill-primary-foreground: #ffffff;
+    --orb-a: rgb(139 92 246 / 0.55); --orb-b: rgb(168 85 247 / 0.45);
+}
+html.theme-midnight {
+    --tint-a: rgb(99 102 241 / 0.18); --tint-b: rgb(139 92 246 / 0.10);
+    --tint-pos-a: top; --tint-pos-b: bottom;
+    --daytill-link: #4338ca; --daytill-primary: #4338ca;
+    --daytill-primary-hover: #3730a3; --daytill-primary-foreground: #ffffff;
+    --orb-a: rgb(99 102 241 / 0.55); --orb-b: rgb(139 92 246 / 0.45);
+}
+
+/* Dark mode overrides — lighter accent tones for dark backgrounds */
+html.dark.theme-rose     { --daytill-link: #fb7185; --daytill-primary: #fb7185; --daytill-primary-hover: #f43f5e; --daytill-primary-foreground: #0b0b0c; }
+html.dark.theme-ocean    { --daytill-link: #22d3ee; --daytill-primary: #22d3ee; --daytill-primary-hover: #06b6d4; --daytill-primary-foreground: #0b0b0c; }
+html.dark.theme-forest   { --daytill-link: #4ade80; --daytill-primary: #4ade80; --daytill-primary-hover: #22c55e; --daytill-primary-foreground: #0b0b0c; }
+html.dark.theme-violet   { --daytill-link: #a78bfa; --daytill-primary: #a78bfa; --daytill-primary-hover: #8b5cf6; --daytill-primary-foreground: #0b0b0c; }
+html.dark.theme-midnight { --daytill-link: #818cf8; --daytill-primary: #818cf8; --daytill-primary-hover: #6366f1; --daytill-primary-foreground: #0b0b0c; }
 
 body {
     background:
@@ -164,19 +205,11 @@ body {
     }
 
     .mesh-orb-a {
-        background: radial-gradient(
-            circle,
-            rgb(0 112 243 / 0.55),
-            transparent 68%
-        );
+        background: radial-gradient(circle, var(--orb-a), transparent 68%);
     }
 
     .mesh-orb-b {
-        background: radial-gradient(
-            circle,
-            rgb(255 0 128 / 0.5),
-            transparent 70%
-        );
+        background: radial-gradient(circle, var(--orb-b), transparent 70%);
     }
 
     .noise-layer {
