@@ -684,7 +684,7 @@ export function DaytillApp() {
     // ─── Render ───────────────────────────────────────────────────────────────
 
     return (
-        <main className="relative min-h-screen overflow-hidden bg-page text-ink">
+        <main className="relative min-h-screen overflow-hidden text-ink">
             {/* Background mesh */}
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
                 <div className="mesh-gradient absolute -top-40 left-1/2 h-112 w-xl -translate-x-1/2 rounded-full blur-3xl" />
