@@ -77,11 +77,11 @@ export function eventToRow(userId: string, event: DaytillEvent) {
         user_id: userId,
         title: event.title,
         event_date: event.date,
-        event_time: event.time ?? null,
+        event_time: event.time || null,
         category: event.category,
         recurring_yearly: event.recurringYearly,
         reminders: event.reminders,
-        email_reminder: event.emailReminder ?? null,
+        email_reminder: event.emailReminder || null,
         created_at: event.createdAt,
     };
 }

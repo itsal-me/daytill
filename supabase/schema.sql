@@ -94,6 +94,11 @@ create policy "Users can delete own events"
   for delete
   using (auth.uid() = user_id);
 
+-- Required for Supabase Realtime postgres_changes to filter UPDATE and DELETE
+-- events by user_id. Without FULL replica identity, payload.old only contains
+-- the primary key, so column filters like user_id=eq.X are silently dropped.
+alter table public.events replica identity full;
+
 drop policy if exists "Users can read own email notification log" on public.event_email_notifications;
 create policy "Users can read own email notification log"
   on public.event_email_notifications

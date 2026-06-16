@@ -253,7 +253,7 @@ export function DaytillApp() {
                 const rows = localEvents.map((e) => eventToRow(userId, e));
                 const { error: upsertErr } = await c.from("events").upsert(rows);
                 if (!mounted) return;
-                if (upsertErr) toast("Initial cloud sync failed.", "error");
+                if (upsertErr) toast(`Initial cloud sync failed: ${upsertErr.message}`, "error");
                 setEvents(sortEvents(localEvents, Date.now()));
             } else {
                 // Cloud has events. Add any local-only events (handles Free→Pro
