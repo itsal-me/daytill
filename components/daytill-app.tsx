@@ -451,6 +451,18 @@ export function DaytillApp() {
         setDraft((c) => ({ ...c, [k]: v }));
     }
 
+    function handleCategoryChange(newCat: EventCategory) {
+        setDraft((prev) => ({
+            ...prev,
+            category: newCat,
+            // Auto-enable repeat yearly for events that recur by nature
+            recurringYearly:
+                newCat === "Birthday" || newCat === "Anniversary"
+                    ? true
+                    : prev.recurringYearly,
+        }));
+    }
+
     function startEdit(event: DaytillEvent) {
         setEditingId(event.id);
         setDraft(eventToDraft(event));
@@ -738,7 +750,7 @@ export function DaytillApp() {
                         <div className="space-y-3">
                             <div className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface px-3 py-1 text-[12px] font-medium tracking-[0.2em] text-body uppercase shadow-[0_1px_0_rgba(0,0,0,0.03)]">
                                 <span className="h-2 w-2 rounded-full bg-link" />
-                                Live countdowns
+                                Your personal timeline
                                 {isPro && (
                                     <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary-foreground">
                                         Pro
@@ -746,12 +758,12 @@ export function DaytillApp() {
                                 )}
                             </div>
                             <h1 className="max-w-3xl text-4xl font-semibold tracking-tighter text-ink sm:text-5xl lg:text-6xl">
-                                Track the moments that matter.
+                                Never lose track of what you&apos;re looking forward to.
                             </h1>
                             <p className="max-w-2xl text-base leading-7 text-body sm:text-lg">
-                                Create countdowns for exams, birthdays, trips,
-                                deadlines, and anniversaries. Local-first,
-                                updates every second, shareable with one link.
+                                From exams and birthdays to trips and big life
+                                milestones — Daytill keeps every moment alive
+                                and shareable, updating every second.
                             </p>
                         </div>
 
@@ -784,7 +796,7 @@ export function DaytillApp() {
 
                     <div className="mt-6 grid gap-3 sm:grid-cols-3">
                         <StatCard
-                            label="Saved events"
+                            label="Countdowns"
                             value={String(events.length).padStart(2, "0")}
                             detail={
                                 isPro && user
@@ -792,12 +804,12 @@ export function DaytillApp() {
                                     : user
                                       ? lastBackupAt
                                         ? `Backed up ${formatRelativeTime(lastBackupAt)}`
-                                        : "Local only — not backed up"
-                                      : "Local browser storage"
+                                        : "Just on this device"
+                                      : "Just on this device"
                             }
                         />
                         <StatCard
-                            label="Next event"
+                            label="Up next"
                             value={
                                 nextUpcoming
                                     ? formatCountdown(
@@ -809,7 +821,7 @@ export function DaytillApp() {
                             detail={
                                 nextUpcoming
                                     ? nextUpcoming.title
-                                    : "No upcoming event"
+                                    : "Nothing coming up"
                             }
                         />
                         <StatCard
@@ -819,8 +831,8 @@ export function DaytillApp() {
                                 isPro
                                     ? "All features unlocked"
                                     : user
-                                      ? "Manual backup · upgrade for auto-sync"
-                                      : "Sign in to enable cloud backup"
+                                      ? "Upgrade for auto-sync & themes"
+                                      : "Sign up to back up your moments"
                             }
                         />
                     </div>
@@ -835,14 +847,14 @@ export function DaytillApp() {
                                 info
                             </span>
                             <span>
-                                Sign in for a free cloud backup vault, or{" "}
+                                Sign up free to keep your moments safe across devices, or{" "}
                                 <Link
                                     href="/pricing"
                                     className="font-medium text-ink underline underline-offset-2 hover:text-link"
                                 >
                                     upgrade to Pro
                                 </Link>{" "}
-                                for automatic sync across all your devices.
+                                for live sync everywhere.
                             </span>
                         </div>
                     )}
@@ -857,15 +869,15 @@ export function DaytillApp() {
                                 </span>
                                 <span className="flex-1">
                                     {lastBackupAt
-                                        ? `Cloud backup · ${formatRelativeTime(lastBackupAt)}.`
-                                        : "Events are local only — not yet backed up."}{" "}
+                                        ? `Your moments are backed up · ${formatRelativeTime(lastBackupAt)}.`
+                                        : "Your moments are only on this device."}{" "}
                                     <Link
                                         href="/pricing"
                                         className="font-medium text-ink underline underline-offset-2 hover:text-link"
                                     >
                                         Upgrade to Pro
                                     </Link>{" "}
-                                    for automatic sync.
+                                    for live sync across all your devices.
                                 </span>
                                 <div className="flex shrink-0 gap-2">
                                     <button
@@ -900,19 +912,19 @@ export function DaytillApp() {
                     <section className="glass-panel rounded-card p-5 shadow-card lg:p-6">
                         <div className="mb-6">
                             <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
-                                {editingId ? "Edit event" : "Create event"}
+                                {editingId ? "Edit countdown" : "New countdown"}
                             </p>
                             <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-ink">
                                 {editingId
                                     ? "Update your countdown."
-                                    : "Set a countdown in seconds."}
+                                    : "What are you counting down to?"}
                             </h2>
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <label className="space-y-2 md:col-span-2">
                                 <span className="text-sm font-medium text-body">
-                                    Event title
+                                    What&apos;s the moment?
                                 </span>
                                 <input
                                     value={draft.title}
@@ -925,7 +937,7 @@ export function DaytillApp() {
                                         if (e.key === "Enter")
                                             void handleSaveEvent();
                                     }}
-                                    placeholder="Exam, birthday, trip, deadline…"
+                                    placeholder="Finals, Mom's birthday, Japan trip…"
                                     className="h-12 w-full rounded-[14px] border border-hairline bg-surface px-4 text-sm text-ink outline-none transition placeholder:text-mute focus:border-link"
                                 />
                             </label>
@@ -968,8 +980,7 @@ export function DaytillApp() {
                                 <select
                                     value={draft.category}
                                     onChange={(e) =>
-                                        updateDraft(
-                                            "category",
+                                        handleCategoryChange(
                                             e.target.value as EventCategory,
                                         )
                                     }
@@ -1075,10 +1086,10 @@ export function DaytillApp() {
                         <div className="mb-4 flex items-start justify-between gap-4">
                             <div>
                                 <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-body">
-                                    Dashboard
+                                    Your timeline
                                 </p>
                                 <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-ink">
-                                    Upcoming events.
+                                    What&apos;s coming up.
                                 </h2>
                             </div>
                             <span className="rounded-full border border-hairline bg-surface px-3 py-1 text-xs font-medium text-mute">
@@ -1111,20 +1122,20 @@ export function DaytillApp() {
                                 {events.length === 0 ? (
                                     <>
                                         <p className="text-base font-medium text-ink">
-                                            Your dashboard is empty.
+                                            What are you looking forward to?
                                         </p>
                                         <p className="mt-2 text-sm text-body">
-                                            Add an event using the form to see a
-                                            live countdown card.
+                                            Add your first countdown and it will
+                                            appear here, live every second.
                                         </p>
                                     </>
                                 ) : (
                                     <p className="text-sm text-body">
                                         No{" "}
                                         <span className="font-medium text-ink">
-                                            {filterCategory}
+                                            {filterCategory.toLowerCase()}
                                         </span>{" "}
-                                        events yet.
+                                        countdowns yet.
                                     </p>
                                 )}
                             </div>
@@ -1169,8 +1180,8 @@ export function DaytillApp() {
                             </h2>
                             <p className="mt-1 text-sm text-body">
                                 {isPro
-                                    ? "Pick a colour tint for your page background."
-                                    : "Upgrade to Pro to unlock custom themes."}
+                                    ? "Pick a theme that matches your mood."
+                                    : "Upgrade to Pro to personalize your experience."}
                             </p>
                         </div>
                         {!isPro && (
