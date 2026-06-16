@@ -59,6 +59,7 @@ type Theme = "default" | "rose" | "ocean" | "forest" | "violet" | "midnight";
 const STORAGE_KEY = "daytill.events.v1";
 const NOTIFIED_KEY = "daytill.notifications.v1";
 const THEME_KEY = "daytill.appearance";
+const BACKUP_META_KEY = "daytill.backup.v1";
 
 const THEMES: { id: Theme; label: string; swatch: string }[] = [
     { id: "default", label: "Default", swatch: "bg-hairline" },
@@ -131,6 +132,16 @@ function applyTheme(theme: Theme) {
     if (theme !== "default") html.classList.add(`theme-${theme}`);
 }
 
+function formatRelativeTime(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function DaytillApp() {
@@ -154,6 +165,9 @@ export function DaytillApp() {
     const [isPro, setIsPro] = useState(false);
     const [eventsLoaded, setEventsLoaded] = useState(false);
     const [appearance, setAppearance] = useState<Theme>("default");
+    const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
+    const [isBackingUp, setIsBackingUp] = useState(false);
+    const [isRestoring, setIsRestoring] = useState(false);
 
     const formRef = useRef<HTMLDivElement>(null);
 
@@ -190,15 +204,18 @@ export function DaytillApp() {
             setAppearance(saved);
             applyTheme(saved);
         }
+        const savedBackup = window.localStorage.getItem(BACKUP_META_KEY);
+        if (savedBackup) setLastBackupAt(savedBackup);
     }, []);
 
     // ─── Auth + plan + cloud sync ─────────────────────────────────────────────
     //
     // Visitor (no login) → localStorage only. Data never leaves the browser.
-    // Free + signed-in   → localStorage + cloud backup. Migrates local → cloud
-    //                      on first login. All changes saved to both. No realtime.
-    // Pro + signed-in    → localStorage + cloud sync. Same migration on first
-    //                      login. Real-time channel pushes other-device changes.
+    // Free + signed-in   → localStorage is the working copy. Cloud is a manual
+    //                      backup vault. "Back up" pushes local → cloud.
+    //                      "Restore" pulls cloud → local. No auto-sync.
+    // Pro + signed-in    → every change auto-syncs to cloud. Real-time channel
+    //                      delivers other-device changes instantly.
 
     useEffect(() => {
         const client = supabase;
@@ -212,6 +229,7 @@ export function DaytillApp() {
         let mounted = true;
         let realtimeChannel: ReturnType<typeof c.channel> | null = null;
 
+        // Pro only: load from cloud and auto-migrate any local-only events.
         async function syncCloudEvents(userId: string) {
             const { data, error } = await c
                 .from("events")
@@ -230,20 +248,25 @@ export function DaytillApp() {
             const cloudEvents = ((data ?? []) as EventRow[]).map(rowToEvent);
             const localEvents = loadEvents(STORAGE_KEY);
 
-            // Cloud is empty but local has events → back up local → cloud
             if (cloudEvents.length === 0 && localEvents.length > 0) {
+                // Cloud empty (first Pro login or upgrade) → push all local
                 const rows = localEvents.map((e) => eventToRow(userId, e));
-                const { error: upsertError } = await c.from("events").upsert(rows);
+                const { error: upsertErr } = await c.from("events").upsert(rows);
                 if (!mounted) return;
-                if (upsertError) {
-                    toast("Cloud backup failed — using local events.", "error");
-                    setEvents(sortEvents(localEvents, Date.now()));
-                } else {
-                    toast(`Backed up ${localEvents.length} event${localEvents.length === 1 ? "" : "s"} to your account.`);
-                    setEvents(sortEvents(localEvents, Date.now()));
-                }
+                if (upsertErr) toast("Initial cloud sync failed.", "error");
+                setEvents(sortEvents(localEvents, Date.now()));
             } else {
-                setEvents(sortEvents(cloudEvents, Date.now()));
+                // Cloud has events. Add any local-only events (handles Free→Pro
+                // upgrade where user had local changes after their last backup).
+                const cloudIds = new Set(cloudEvents.map((e) => e.id));
+                const localOnly = localEvents.filter((e) => !cloudIds.has(e.id));
+                if (localOnly.length > 0) {
+                    await c.from("events").upsert(localOnly.map((e) => eventToRow(userId, e)));
+                    if (!mounted) return;
+                    setEvents(sortEvents([...cloudEvents, ...localOnly], Date.now()));
+                } else {
+                    setEvents(sortEvents(cloudEvents, Date.now()));
+                }
             }
 
             setEventsLoaded(true);
@@ -299,8 +322,15 @@ export function DaytillApp() {
             if (!mounted) return;
             setIsPro(pro);
 
-            await syncCloudEvents(sessionUser.id);
-            if (pro) subscribeRealtime(sessionUser.id);
+            if (pro) {
+                // Pro: cloud is authoritative, real-time keeps it live
+                await syncCloudEvents(sessionUser.id);
+                subscribeRealtime(sessionUser.id);
+            } else {
+                // Free: local is the working copy, cloud backup is manual
+                setEvents(loadEvents(STORAGE_KEY));
+                setEventsLoaded(true);
+            }
         }
 
         void init();
@@ -317,6 +347,7 @@ export function DaytillApp() {
                 setEvents(loadEvents(STORAGE_KEY));
                 setEventsLoaded(true);
                 setIsPro(false);
+                setLastBackupAt(null);
                 setAppearance("default");
                 applyTheme("default");
                 return;
@@ -327,12 +358,16 @@ export function DaytillApp() {
                 const pro = await getUserIsPro(c, sessionUser.id);
                 if (!mounted) return;
                 setIsPro(pro);
-                await syncCloudEvents(sessionUser.id);
                 if (pro) {
+                    await syncCloudEvents(sessionUser.id);
                     subscribeRealtime(sessionUser.id);
-                } else if (realtimeChannel) {
-                    void c.removeChannel(realtimeChannel);
-                    realtimeChannel = null;
+                } else {
+                    if (realtimeChannel) {
+                        void c.removeChannel(realtimeChannel);
+                        realtimeChannel = null;
+                    }
+                    setEvents(loadEvents(STORAGE_KEY));
+                    setEventsLoaded(true);
                 }
             })();
         });
@@ -452,14 +487,60 @@ export function DaytillApp() {
         );
     }
 
+    async function handleBackupToCloud() {
+        if (!user || !supabase || isPro) return;
+        setIsBackingUp(true);
+        try {
+            // Replace cloud copy with current local state
+            const { error: delErr } = await supabase
+                .from("events")
+                .delete()
+                .eq("user_id", user.id);
+            if (delErr) { toast(`Backup failed: ${delErr.message}`, "error"); return; }
+            if (events.length > 0) {
+                const { error: upsertErr } = await supabase
+                    .from("events")
+                    .upsert(events.map((e) => eventToRow(user.id, e)));
+                if (upsertErr) { toast(`Backup failed: ${upsertErr.message}`, "error"); return; }
+            }
+            const ts = new Date().toISOString();
+            setLastBackupAt(ts);
+            window.localStorage.setItem(BACKUP_META_KEY, ts);
+            toast(`Backed up ${events.length} event${events.length === 1 ? "" : "s"} to cloud.`);
+        } finally {
+            setIsBackingUp(false);
+        }
+    }
+
+    async function handleRestoreFromCloud() {
+        if (!user || !supabase || isPro) return;
+        setIsRestoring(true);
+        try {
+            const { data, error } = await supabase
+                .from("events")
+                .select("*")
+                .eq("user_id", user.id);
+            if (error) { toast(`Restore failed: ${error.message}`, "error"); return; }
+            const restored = ((data ?? []) as EventRow[]).map(rowToEvent);
+            setEvents(sortEvents(restored, Date.now()));
+            toast(
+                restored.length > 0
+                    ? `Restored ${restored.length} event${restored.length === 1 ? "" : "s"} from cloud.`
+                    : "No cloud backup found.",
+            );
+        } finally {
+            setIsRestoring(false);
+        }
+    }
+
     async function handleSaveEvent() {
         if (!draft.title.trim() || !draft.date) {
             toast("Add a title and date first.", "error");
             return;
         }
 
-        // All signed-in users get cloud backup; Pro also gets real-time sync
-        const saveToCloud = !!user && !!supabase;
+        // Pro users auto-sync every change to cloud; Free uses manual backup
+        const saveToCloud = isPro && !!user && !!supabase;
 
         const reminders = draftToReminders(draft);
 
@@ -534,7 +615,7 @@ export function DaytillApp() {
     }
 
     async function handleDeleteEvent(id: string) {
-        const saveToCloud = !!user && !!supabase;
+        const saveToCloud = isPro && !!user && !!supabase;
         if (saveToCloud) {
             const { error } = await supabase!
                 .from("events")
@@ -709,7 +790,9 @@ export function DaytillApp() {
                                 isPro && user
                                     ? `Synced · ${user.email ?? "account"}`
                                     : user
-                                      ? `Backed up · ${user.email ?? "account"}`
+                                      ? lastBackupAt
+                                        ? `Backed up ${formatRelativeTime(lastBackupAt)}`
+                                        : "Local only — not backed up"
                                       : "Local browser storage"
                             }
                         />
@@ -736,8 +819,8 @@ export function DaytillApp() {
                                 isPro
                                     ? "All features unlocked"
                                     : user
-                                      ? "Upgrade for auto-sync & themes"
-                                      : "Sign in to back up your data"
+                                      ? "Manual backup · upgrade for auto-sync"
+                                      : "Sign in to enable cloud backup"
                             }
                         />
                     </div>
@@ -752,7 +835,7 @@ export function DaytillApp() {
                                 info
                             </span>
                             <span>
-                                Sign in for a free cloud backup, or{" "}
+                                Sign in for a free cloud backup vault, or{" "}
                                 <Link
                                     href="/pricing"
                                     className="font-medium text-ink underline underline-offset-2 hover:text-link"
@@ -764,23 +847,45 @@ export function DaytillApp() {
                         </div>
                     )}
                     {user && !isPro && (
-                        <div className="mt-4 flex items-center gap-3 rounded-xl border border-hairline bg-canvas-soft-2 px-4 py-3 text-sm text-body">
-                            <span
-                                className="material-symbols-outlined text-mute"
-                                style={{ fontSize: "18px" }}
-                            >
-                                cloud_done
-                            </span>
-                            <span>
-                                Your events are backed up to the cloud.{" "}
-                                <Link
-                                    href="/pricing"
-                                    className="font-medium text-ink underline underline-offset-2 hover:text-link"
+                        <div className="mt-4 rounded-xl border border-hairline bg-canvas-soft-2 px-4 py-3 text-sm text-body">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <span
+                                    className="material-symbols-outlined text-mute"
+                                    style={{ fontSize: "18px" }}
                                 >
-                                    Upgrade to Pro
-                                </Link>{" "}
-                                for automatic sync across all your devices and custom themes.
-                            </span>
+                                    cloud_upload
+                                </span>
+                                <span className="flex-1">
+                                    {lastBackupAt
+                                        ? `Cloud backup · ${formatRelativeTime(lastBackupAt)}.`
+                                        : "Events are local only — not yet backed up."}{" "}
+                                    <Link
+                                        href="/pricing"
+                                        className="font-medium text-ink underline underline-offset-2 hover:text-link"
+                                    >
+                                        Upgrade to Pro
+                                    </Link>{" "}
+                                    for automatic sync.
+                                </span>
+                                <div className="flex shrink-0 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleBackupToCloud()}
+                                        disabled={isBackingUp || isRestoring}
+                                        className="inline-flex h-8 items-center rounded-pill border border-hairline bg-surface px-3 text-xs font-medium text-ink transition hover:border-hairline-strong disabled:opacity-50"
+                                    >
+                                        {isBackingUp ? "Backing up…" : "Back up"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleRestoreFromCloud()}
+                                        disabled={isBackingUp || isRestoring}
+                                        className="inline-flex h-8 items-center rounded-pill border border-hairline bg-surface px-3 text-xs font-medium text-ink transition hover:border-hairline-strong disabled:opacity-50"
+                                    >
+                                        {isRestoring ? "Restoring…" : "Restore"}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </section>
