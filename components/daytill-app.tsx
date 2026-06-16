@@ -194,12 +194,11 @@ export function DaytillApp() {
 
     // ─── Auth + plan + cloud sync ─────────────────────────────────────────────
     //
-    // Model: plan is checked FIRST, then we decide what to do with events.
-    //
-    // Free + signed-in  → stay on localStorage, never touch Supabase events table.
-    // Pro + signed-in   → check cloud; if empty AND we have local events, migrate
-    //                     them to cloud (one-time), then show merged result.
-    //                     If cloud already has events, show cloud only.
+    // Visitor (no login) → localStorage only. Data never leaves the browser.
+    // Free + signed-in   → localStorage + cloud backup. Migrates local → cloud
+    //                      on first login. All changes saved to both. No realtime.
+    // Pro + signed-in    → localStorage + cloud sync. Same migration on first
+    //                      login. Real-time channel pushes other-device changes.
 
     useEffect(() => {
         const client = supabase;
@@ -211,8 +210,9 @@ export function DaytillApp() {
 
         const c = client;
         let mounted = true;
+        let realtimeChannel: ReturnType<typeof c.channel> | null = null;
 
-        async function syncForProUser(userId: string) {
+        async function syncCloudEvents(userId: string) {
             const { data, error } = await c
                 .from("events")
                 .select("*")
@@ -228,27 +228,58 @@ export function DaytillApp() {
             }
 
             const cloudEvents = ((data ?? []) as EventRow[]).map(rowToEvent);
-
-            // Cloud is empty but local has events → migrate local → cloud
             const localEvents = loadEvents(STORAGE_KEY);
+
+            // Cloud is empty but local has events → back up local → cloud
             if (cloudEvents.length === 0 && localEvents.length > 0) {
                 const rows = localEvents.map((e) => eventToRow(userId, e));
                 const { error: upsertError } = await c.from("events").upsert(rows);
                 if (!mounted) return;
                 if (upsertError) {
-                    toast("Migration to cloud failed — keeping local events.", "error");
+                    toast("Cloud backup failed — using local events.", "error");
                     setEvents(sortEvents(localEvents, Date.now()));
                 } else {
-                    toast(`Migrated ${localEvents.length} local event${localEvents.length === 1 ? "" : "s"} to your Pro account.`);
+                    toast(`Backed up ${localEvents.length} event${localEvents.length === 1 ? "" : "s"} to your account.`);
                     setEvents(sortEvents(localEvents, Date.now()));
-                    // Clear local copy now that cloud is authoritative
-                    saveLocalEvents([]);
                 }
             } else {
                 setEvents(sortEvents(cloudEvents, Date.now()));
             }
 
             setEventsLoaded(true);
+        }
+
+        function subscribeRealtime(userId: string) {
+            if (realtimeChannel) void c.removeChannel(realtimeChannel);
+            realtimeChannel = c
+                .channel(`events:${userId}`)
+                .on(
+                    "postgres_changes",
+                    { event: "*", schema: "public", table: "events", filter: `user_id=eq.${userId}` },
+                    (payload) => {
+                        if (!mounted) return;
+                        if (payload.eventType === "INSERT") {
+                            const incoming = rowToEvent(payload.new as EventRow);
+                            setEvents((prev) =>
+                                prev.some((e) => e.id === incoming.id)
+                                    ? prev
+                                    : sortEvents([...prev, incoming], Date.now()),
+                            );
+                        } else if (payload.eventType === "UPDATE") {
+                            const incoming = rowToEvent(payload.new as EventRow);
+                            setEvents((prev) =>
+                                sortEvents(
+                                    prev.map((e) => (e.id === incoming.id ? incoming : e)),
+                                    Date.now(),
+                                ),
+                            );
+                        } else if (payload.eventType === "DELETE") {
+                            const deletedId = (payload.old as { id: string }).id;
+                            setEvents((prev) => prev.filter((e) => e.id !== deletedId));
+                        }
+                    },
+                )
+                .subscribe();
         }
 
         async function init() {
@@ -264,18 +295,12 @@ export function DaytillApp() {
                 return;
             }
 
-            // Check plan before deciding where events come from
             const pro = await getUserIsPro(c, sessionUser.id);
             if (!mounted) return;
             setIsPro(pro);
 
-            if (pro) {
-                await syncForProUser(sessionUser.id);
-            } else {
-                // Signed in but free — use local storage
-                setEvents(loadEvents(STORAGE_KEY));
-                setEventsLoaded(true);
-            }
+            await syncCloudEvents(sessionUser.id);
+            if (pro) subscribeRealtime(sessionUser.id);
         }
 
         void init();
@@ -285,6 +310,10 @@ export function DaytillApp() {
             setUser(sessionUser);
 
             if (!sessionUser) {
+                if (realtimeChannel) {
+                    void c.removeChannel(realtimeChannel);
+                    realtimeChannel = null;
+                }
                 setEvents(loadEvents(STORAGE_KEY));
                 setEventsLoaded(true);
                 setIsPro(false);
@@ -298,11 +327,12 @@ export function DaytillApp() {
                 const pro = await getUserIsPro(c, sessionUser.id);
                 if (!mounted) return;
                 setIsPro(pro);
+                await syncCloudEvents(sessionUser.id);
                 if (pro) {
-                    await syncForProUser(sessionUser.id);
-                } else {
-                    setEvents(loadEvents(STORAGE_KEY));
-                    setEventsLoaded(true);
+                    subscribeRealtime(sessionUser.id);
+                } else if (realtimeChannel) {
+                    void c.removeChannel(realtimeChannel);
+                    realtimeChannel = null;
                 }
             })();
         });
@@ -310,16 +340,17 @@ export function DaytillApp() {
         return () => {
             mounted = false;
             subscription.unsubscribe();
+            if (realtimeChannel) void c.removeChannel(realtimeChannel);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [supabase]);
 
-    // ─── Persist to localStorage (local-only mode) ────────────────────────────
+    // ─── Persist to localStorage (always — local is an offline backup) ─────────
 
     useEffect(() => {
-        if (typeof window === "undefined" || !eventsLoaded || user) return;
+        if (typeof window === "undefined" || !eventsLoaded) return;
         saveLocalEvents(events);
-    }, [events, eventsLoaded, user]);
+    }, [events, eventsLoaded]);
 
     // ─── Live clock ───────────────────────────────────────────────────────────
 
@@ -427,8 +458,8 @@ export function DaytillApp() {
             return;
         }
 
-        // Cloud sync is Pro-only — free users save locally regardless of sign-in
-        const saveToCloud = isPro && !!user && !!supabase;
+        // All signed-in users get cloud backup; Pro also gets real-time sync
+        const saveToCloud = !!user && !!supabase;
 
         const reminders = draftToReminders(draft);
 
@@ -452,9 +483,7 @@ export function DaytillApp() {
             if (saveToCloud) {
                 const { error } = await supabase!
                     .from("events")
-                    .update(eventToRow(user!.id, updated))
-                    .eq("id", updated.id)
-                    .eq("user_id", user!.id);
+                    .upsert(eventToRow(user!.id, updated));
                 if (error) {
                     toast(`Cloud update failed: ${error.message}`, "error");
                     return;
@@ -493,11 +522,7 @@ export function DaytillApp() {
                     `Cloud save failed: ${error.message} — saved locally.`,
                     "error",
                 );
-                setEvents((prev) => {
-                    const next = [...prev, event];
-                    saveLocalEvents(next);
-                    return next;
-                });
+                setEvents((prev) => [...prev, event]);
                 setDraft({ ...DEFAULT_DRAFT, category: draft.category });
                 return;
             }
@@ -509,7 +534,7 @@ export function DaytillApp() {
     }
 
     async function handleDeleteEvent(id: string) {
-        const saveToCloud = isPro && !!user && !!supabase;
+        const saveToCloud = !!user && !!supabase;
         if (saveToCloud) {
             const { error } = await supabase!
                 .from("events")
@@ -522,11 +547,7 @@ export function DaytillApp() {
             }
         }
         if (editingId === id) cancelEdit();
-        setEvents((prev) => {
-            const next = prev.filter((e) => e.id !== id);
-            if (!saveToCloud) saveLocalEvents(next);
-            return next;
-        });
+        setEvents((prev) => prev.filter((e) => e.id !== id));
         toast("Event removed.");
     }
 
@@ -687,7 +708,9 @@ export function DaytillApp() {
                             detail={
                                 isPro && user
                                     ? `Synced · ${user.email ?? "account"}`
-                                    : "Local browser storage"
+                                    : user
+                                      ? `Backed up · ${user.email ?? "account"}`
+                                      : "Local browser storage"
                             }
                         />
                         <StatCard
@@ -712,7 +735,9 @@ export function DaytillApp() {
                             detail={
                                 isPro
                                     ? "All features unlocked"
-                                    : "Upgrade for sync & themes"
+                                    : user
+                                      ? "Upgrade for auto-sync & themes"
+                                      : "Sign in to back up your data"
                             }
                         />
                     </div>
@@ -727,13 +752,14 @@ export function DaytillApp() {
                                 info
                             </span>
                             <span>
+                                Sign in for a free cloud backup, or{" "}
                                 <Link
                                     href="/pricing"
                                     className="font-medium text-ink underline underline-offset-2 hover:text-link"
                                 >
-                                    Upgrade to Pro
+                                    upgrade to Pro
                                 </Link>{" "}
-                                to sync events across devices and unlock themes.
+                                for automatic sync across all your devices.
                             </span>
                         </div>
                     )}
@@ -743,18 +769,17 @@ export function DaytillApp() {
                                 className="material-symbols-outlined text-mute"
                                 style={{ fontSize: "18px" }}
                             >
-                                lock
+                                cloud_done
                             </span>
                             <span>
-                                You&apos;re signed in but on the Free plan —
-                                events stay local.{" "}
+                                Your events are backed up to the cloud.{" "}
                                 <Link
                                     href="/pricing"
                                     className="font-medium text-ink underline underline-offset-2 hover:text-link"
                                 >
                                     Upgrade to Pro
                                 </Link>{" "}
-                                for cloud sync and themes.
+                                for automatic sync across all your devices and custom themes.
                             </span>
                         </div>
                     )}
